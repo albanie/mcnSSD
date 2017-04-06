@@ -1,5 +1,3 @@
-Grave Warning: this code is still under development.
-
 ## Single Shot MultiBox Detector
 
 This directory contains code to train and evaluate the SSD object detector
