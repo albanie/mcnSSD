@@ -10,7 +10,7 @@ Scott Reed, Cheng-Yang Fu, Alexander C. Berg
 ```
 
 The code is based on the `caffe` implementation 
-(made available)[https://github.com/weiliu89/caffe/tree/ssd] by Wei Liu.
+[made available](https://github.com/weiliu89/caffe/tree/ssd) by Wei Liu.
 
 ### Performance
 
