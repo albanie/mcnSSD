@@ -13,7 +13,7 @@ the terms of the BSD license (see the COPYING file).
 #ifndef __vl__nnmultiboxdetector__
 #define __vl__nnmultiboxdetector__
 
-#include "data.hpp"
+#include <bits/data.hpp>
 #include <stdio.h>
 
 namespace vl {

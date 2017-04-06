@@ -15,7 +15,7 @@ the terms of the BSD license (see the COPYING file).
 #include "impl/multiboxdetector.hpp"
 
 #if ENABLE_GPU
-#include "datacu.hpp"
+#include <bits/datacu.hpp>
 #endif
 
 #include <cstdio>

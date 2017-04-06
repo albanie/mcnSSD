@@ -13,7 +13,7 @@ the terms of the BSD license (see the COPYING file).
 */
 
 #include "multiboxdetector.hpp"
-#include "../data.hpp"
+#include <bits/data.hpp>
 #include <assert.h>
 #include <float.h>
 #include <cstdio>

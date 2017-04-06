@@ -14,7 +14,7 @@ the terms of the BSD license (see the COPYING file).
 #ifndef VL_MULTIBOXDETECTOR_H
 #define VL_MULTIBOXDETECTOR_H
 
-#include "../data.hpp"
+#include <bits/data.hpp>
 #include <cstddef>
 
 // defines the dispatcher for CUDA kernels:

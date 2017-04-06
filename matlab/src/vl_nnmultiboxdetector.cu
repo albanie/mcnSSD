@@ -10,12 +10,12 @@ This file is part of the VLFeat library and is made available under
 the terms of the BSD license (see the COPYING file).
 */
 
-#include "bits/mexutils.h"
-#include "bits/datamex.hpp"
+#include <bits/mexutils.h>
+#include <bits/datamex.hpp>
 #include "bits/nnmultiboxdetector.hpp"
 
 #if ENABLE_GPU
-#include "bits/datacu.hpp"
+#include <bits/datacu.hpp>
 #endif
 
 #include <assert.h>
