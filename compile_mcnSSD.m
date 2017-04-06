@@ -1,4 +1,4 @@
-function compile_mcnSSD
+function compile_mcnSSD(varargin)
 % compile the C++/CUDA components of the SSD Detector 
 
 last_args_path = fullfile(vl_rootnn, 'matlab/mex/.build', ...
@@ -18,7 +18,7 @@ function [opts, mex_src, lib_src, flags] = preCompileFn(opts, mex_src, ...
 % ------------------------------------------------------------------------
 
 mcn_root = vl_rootnn() ;
-root = fileparts(mfilename('fullpath')) ;
+root = fullfile(fileparts(mfilename('fullpath')), 'matlab') ;
 
 % Build inside the module path
 flags.src_dir = fullfile(root, 'src') ;
@@ -41,9 +41,11 @@ end
 % Add mcn dependencies
 lib_src{end+1} = fullfile(mcn_root, 'matlab/src/bits', ['data.' ext]) ;
 lib_src{end+1} = fullfile(mcn_root, 'matlab/src/bits', ['datamex.' ext]) ;
+lib_src{end+1} = fullfile(mcn_root,'matlab/src/bits/impl/copy_cpu.cpp') ;
 
 if opts.enableGpu
   lib_src{end+1} = fullfile(mcn_root,'matlab/src/bits/datacu.cu') ;
+  lib_src{end+1} = fullfile(mcn_root,'matlab/src/bits/impl/copy_gpu.cu') ;
 end
 
 flags.cc{end+1} = sprintf('-I%s', fullfile(mcn_root,'matlab/src')) ;
