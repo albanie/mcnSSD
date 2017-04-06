@@ -3,11 +3,10 @@ function ssd_demo(varargin)
 %
 % @release-todo: 
 % upload model file at http://www.vlfeat.org/matconvnet/models/ssd-pascal-vggvd-300.mat
-%
 
 % Setup MatConvNet
-run(fullfile(fileparts(mfilename('fullpath')), ...
-  '..', '..', 'matlab', 'vl_setupnn.m')) ;
+%run(fullfile(fileparts(mfilename('fullpath')), ...
+  %'..', '..', 'matlab', 'vl_setupnn.m')) ;
 
 opts.modelPath = '' ;
 opts.gpu = [] ;
