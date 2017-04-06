@@ -1,8 +1,5 @@
 function ssd_demo(varargin)
 %SSD_DEMO Minimalistic demonstration of the SSD detector
-%
-% @release-todo: 
-% upload model file at http://www.vlfeat.org/matconvnet/models/ssd-pascal-vggvd-300.mat
 
 % Setup MatConvNet
 %run(fullfile(fileparts(mfilename('fullpath')), ...
@@ -38,8 +35,8 @@ opts.classes = {'none_of_the_above', ...
 
 opts = vl_argparse(opts, varargin) ;
 
-% Load or download the SSD model file: ssd-pascal-vggvd-300.mat
-modelName = 'ssd-pascal-vggvd-300.mat' ;
+% Load or download an example SSD model:
+modelName = 'ssd-mcn-pascal-vggvd-300.mat' ;
 paths = {opts.modelPath, ...
          modelName, ...
          fullfile(vl_rootnn, 'data', 'models', modelName), ...
@@ -50,8 +47,8 @@ if isempty(ok)
   fprintf('Downloading the SSD model ... this may take a while\n') ;
   opts.modelPath = fullfile(vl_rootnn, 'data/models', modelName) ;
   mkdir(fileparts(opts.modelPath)) ;
-  urlwrite(sprintf('http://www.vlfeat.org/matconvnet/models/%s',  ...
-                                                 modelName), opts.modelPath) ;
+  url = sprintf('robots.ox.ac.uk/~albanie/models/%s', modelName) ;
+  urlwrite(url, opts.modelPath) ;
 else
   opts.modelPath = paths{ok} ;
 end
