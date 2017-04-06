@@ -21,9 +21,7 @@ the model trained with `matconvnet` achieves
 a similar mAP on the 2007 test set to the `caffe` model.
 
 ```
-Test Set Results:  
-
-Comparison of the ssd-pascal-vggvd-300 model
+Test Set Results - comparison of the ssd-pascal-vggvd-300 model:
 
 -------------- -------------------- ------------------------
                trained with caffe   trained with matconvnet
