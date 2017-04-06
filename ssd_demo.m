@@ -2,8 +2,9 @@ function ssd_demo(varargin)
 %SSD_DEMO Minimalistic demonstration of the SSD detector
 
 % Setup MatConvNet
-%run(fullfile(fileparts(mfilename('fullpath')), ...
-  %'..', '..', 'matlab', 'vl_setupnn.m')) ;
+curr = fileparts(mfilename('fullpath')) ;
+run(fullfile(curr, '../../matlab/vl_setupnn.m')) ;
+addpath(fullfile(curr, 'matlab/mex'))
 
 opts.modelPath = '' ;
 opts.gpu = [] ;
