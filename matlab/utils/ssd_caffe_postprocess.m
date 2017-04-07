@@ -10,11 +10,7 @@ function ssd_caffe_postprocess(modelPath, mcnRoot)
 %   MCNROOT is a string pointing to the root directory of the 
 %   matconvnet install
 %
-% Copyright (C) 2017 Samuel Albanie and Andrea Vedaldi.
-% All rights reserved.
-%
-% This file is part of the VLFeat library and is made available under
-% the terms of the BSD license (see the COPYING file).
+% Copyright (C) 2017 Samuel Albanie 
 
 % set up paths
 addpath(fullfile(mcnRoot,'matlab')) ;

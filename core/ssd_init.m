@@ -2,14 +2,11 @@ function net = ssd_init(opts)
 % SSD_INIT Initialize a Single Shot Multibox Detector Network
 %   NET = SSD_INIT randomly initializes an SSD network architecture
 
-trunkModelPath = fullfile(vl_rootnn, ...
-                          'data/models-import/vgg-vd-16-reduced.mat') ;
-
 % for reproducibility, fix the seed
 rng(0, 'twister') ;
 
-% load pre-trained base network 
-net = vl_simplenn_tidy(load(trunkModelPath)) ;
+% load trunk model
+net = ssd_zoo('vgg-vd-16-reduced') ;
 
 % -------------------------------------------------------------
 % Set meta properties of net
@@ -35,8 +32,6 @@ net.meta.normalization.imageSize = imSize ;
 % -------------------------------------------------------------
 % Network truncation
 % -------------------------------------------------------------
-net = dagnn.DagNN.fromSimpleNN(net) ;
-
 % modify trunk biases learnning rate and weight decay to match caffe 
 params = {'conv1_1b', ...
           'conv1_2b', ...

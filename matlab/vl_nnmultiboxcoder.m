@@ -234,13 +234,12 @@ if nargin <= 1 || isempty(dzdy)
           matchingPosIndices, matchingNegIndices } ;
 
 else
-    dzdLoc = dzdy{1} ;
-    dzdConf = squeeze(dzdy{2})' ;
+    % sparse matrix operations are (currently) more efficient on the CPU
+    dzdLoc = gather(dzdy{1}) ;
+    dzdConf = gather(squeeze(dzdy{2})') ;
 
-    %locDer = zeros(numPriors, 4, 1, batchSize, 'single') ;
-    %confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'single') ;
-    locDer = zeros(numPriors, 4, 1, batchSize, 'like', x) ;
-    confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'like', v) ;
+    locDer = zeros(numPriors, 4, 1, batchSize, 'single') ;
+    confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'single') ;
 
     % reshape the derivatives into the appropriate batch elements
     locDerSizes = cellfun(@numel, opts.matchingPosIndices) ;
@@ -279,7 +278,8 @@ else
 
     end
 
-    locDer = reshape(permute(locDer, [2 1 3 4]), size(x)) ;
-    confDer = reshape(permute(confDer, [2 1 3 4]), size(v)) ;
+    locDer = cast(reshape(permute(locDer, [2 1 3 4]), size(x)), 'like', x) ;
+    confDer = cast(reshape(permute(confDer, [2 1 3 4]), size(v)), 'like', v) ;
+
     y = {locDer, confDer} ;
 end
