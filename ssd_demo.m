@@ -1,13 +1,13 @@
 function ssd_demo(varargin)
 %SSD_DEMO Minimalistic demonstration of the SSD detector
 
-% Setup MatConvNet
+% Setup MatConvNet and SSD
 curr = fileparts(mfilename('fullpath')) ;
 run(fullfile(curr, '../../matlab/vl_setupnn.m')) ;
-addpath(fullfile(curr, 'matlab/mex'))
+setup_mcnSSD ;
 
 opts.modelPath = '' ;
-opts.gpu = [] ;
+opts.gpu = [1] ;
 opts.batchSize = 1 ;
 
 % The network is trained to prediction occurences
@@ -48,7 +48,7 @@ if isempty(ok)
   fprintf('Downloading the SSD model ... this may take a while\n') ;
   opts.modelPath = fullfile(vl_rootnn, 'data/models', modelName) ;
   mkdir(fileparts(opts.modelPath)) ;
-  url = sprintf('robots.ox.ac.uk/~albanie/models/%s', modelName) ;
+  url = sprintf('http://www.robots.ox.ac.uk/~albanie/models/ssd/%s', modelName) ;
   urlwrite(url, opts.modelPath) ;
 else
   opts.modelPath = paths{ok} ;
@@ -91,6 +91,11 @@ preds = preds(sortedIdx, :) ;
 box = preds(1,3:end) ;
 confidence = preds(1,2) ;
 label = opts.classes{preds(1,1)} ;
+
+% return image to cpu for visualisation
+if numel(opts.gpu) > 0
+  im = gather(im) ;
+end
 
 % diplay prediction as a sanity check
 figure ;

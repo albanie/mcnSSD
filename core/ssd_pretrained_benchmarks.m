@@ -61,7 +61,6 @@ end
 % diningtable    76.30                73.10
 % dog            85.92                86.21
 % horse          86.60                86.99
-% mean           77.54                79.57
 % motorbike      83.62                83.89
 % person         79.57                82.69
 % pottedplant    52.62                55.06
@@ -90,7 +89,6 @@ end
 % diningtable    79.05                75.71
 % dog            88.43                90.66
 % horse          89.38                90.81
-% mean           79.76                82.80
 % motorbike      86.55                87.71
 % person         82.19                85.64
 % pottedplant    53.36                56.68

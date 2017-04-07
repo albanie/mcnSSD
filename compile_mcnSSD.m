@@ -9,8 +9,26 @@ if exist(last_args_path, 'file')
   opts = {load(last_args_path)} ;
 end
 
+% select relevant options from original compilation
+opts = selectCompileOpts(opts) ;
+
 vl_compilenn(opts{:}, varargin{:}, 'preCompileFn', @preCompileFn) ;
 
+% -------------------------------------
+function opts = selectCompileOpts(opts) 
+% -------------------------------------
+keep = {'enableGpu', 'enableImreadJpeg', 'enableCudnn', 'enableDouble', ...
+        'imageLibrary', 'imageLibraryCompileFlags', ...
+        'imageLibraryLinkFlags', 'verbose', 'debug', 'cudaMethod', ...
+        'cudaRoot', 'cudaArch', 'defCudaArch', 'cudnnRoot', 'preCompileFn'} ; 
+s = opts{1} ;
+f = fieldnames(s) ;
+for i = 1:numel(f)
+  if ~ismember(f{i}, keep)
+    s = rmfield(s, f{i}) ;
+  end
+end
+opts = {s} ;
 
 % ------------------------------------------------------------------------
 function [opts, mex_src, lib_src, flags] = preCompileFn(opts, mex_src, ...

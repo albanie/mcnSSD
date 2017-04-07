@@ -39,7 +39,6 @@ cow            81.39                81.59
 diningtable    76.30                75.57
 dog            85.92                84.65
 horse          86.60                86.65
-mean           77.54                77.75
 motorbike      83.62                84.94
 person         79.57                79.47
 pottedplant    52.62                50.30
