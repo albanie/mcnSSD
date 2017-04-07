@@ -53,4 +53,50 @@ mean           77.54                77.75
 
 ### Speed
 
-The pretrained `ssd-pascal-vggvd-300-ft` model runs at approximately 68 Hz on a Tesla M-40.
+The pre-trained `ssd-pascal-vggvd-300-ft` model (pre-trained on coco and 
+fine-tuned on pascal) runs at approximately 68 Hz on a Tesla M-40.
+
+
+### Installation
+
+The easiest way to use this module is to install it with the `vl_contrib` 
+package manager. It can then be installed with the following three commands 
+from the root directory of a matconvnet installation:
+
+```
+vl_contrib('install', 'mcnSSD', 'contribUrl', 'github.com/albanie/matconvnet-contrib-test/') ;
+vl_contrib('compile', 'mcnSSD', 'contribUrl', 'github.com/albanie/matconvnet-contrib-test/') ;
+vl_contrib('setup', 'mcnSSD', 'contribUrl', 'github.com/albanie/matconvnet-contrib-test/') ;
+```
+
+### Demo
+
+The `ssd_demo.m` script gives an example of how to run a pre-trained model 
+on a single image.  The `core/ssd_pretrained_benchmarks.m` will download 
+and evaluate a range of pre-trained SSD models on the `Pascal VOC 2007` test 
+set. 
+
+An example of model training can be found in `pascal/ssd_pascal_train.m`
+
+
+### Pre-trained models
+
+The public `caffe` models released by Wei Liu have been imported into 
+`matconvnet` for use.  In addition, some sample models trained with the 
+matconvnet implementation have been made available. These can be 
+downloaded directly from 
+[here](http://www.robots.ox.ac.uk/~albanie/models.html#ssd) (a few pre-trained 
+models will be downloaded automatically upon running the 
+`core/ssd_pretrained_benchmarks.m` script).
+
+
+### Dependencies
+
+`CPU-mode`:
+
+* `matconvnet (tested with v1.0-beta23, v1.0-beta24)`
+* `MATLAB (tested with 2016a)` 
+
+`additional GPU-mode dependency`:
+
+* `CUDA (tested with v7.5, v8)`
