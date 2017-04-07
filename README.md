@@ -53,4 +53,4 @@ mean           77.54                77.75
 
 ### Speed
 
-The pretrained `ssd-pascal-vggvd-300` model runs at approximately 50 Hz on a titan X.
+The pretrained `ssd-pascal-vggvd-300-ft` model runs at approximately 68 Hz on a Tesla M-40.

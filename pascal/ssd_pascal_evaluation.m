@@ -33,9 +33,9 @@ batchOpts.imageSize = net.meta.normalization.imageSize ;
 % ---------------------------------------
 %                     cache configuration 
 % ---------------------------------------
-cacheOpts.refreshPredictionCache = true ;
-cacheOpts.refreshDecodedPredCache = true ;
-cacheOpts.refreshEvaluationCache = true ;
+cacheOpts.refreshPredictionCache = false ;
+cacheOpts.refreshDecodedPredCache = false ;
+cacheOpts.refreshEvaluationCache = false ;
 cacheOpts.refreshFigures = false ;
 
 % -------------------------

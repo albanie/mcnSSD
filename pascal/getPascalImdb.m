@@ -11,9 +11,10 @@ opts = vl_argparse(opts, varargin) ;
 % the 2007 test data is used for evaluation
 opts.VOCRoot = fullfile(opts.dataOpts.dataRoot, 'VOCdevkit2007' ) ;
 opts.devkitCode = fullfile(opts.VOCRoot, 'VOCcode') ;
-opts.pascalOpts = loadPascalOpts(opts) ;
 
 imdb = loadImdb(opts) ;
+
+opts.pascalOpts = loadPascalOpts(opts) ;
 
 % add meta information (inlcuding background class)
 imdb.meta.classes = {'background' opts.pascalOpts.classes{:}} ;
