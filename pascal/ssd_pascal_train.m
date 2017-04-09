@@ -1,9 +1,10 @@
 function ssd_pascal_train(varargin)
 
-opts.gpus = [1 2 3 4] ;
+opts.gpus = [1 2] ;
 opts.continue = true ;
 opts.confirmConfig = true ;
 opts.pruneCheckpoints = true ;
+opts.architecture = 300 ;
 opts.use_vl_imreadjpeg = false ; 
 opts = vl_argparse(opts, varargin) ;
 
@@ -43,12 +44,12 @@ dataOpts.dataRoot = fullfile(vl_rootnn, 'data', 'datasets') ;
 % -------------------------
 modelOpts.type = 'ssd' ;
 modelOpts.numClasses = 21 ;
-modelOpts.architecture = 300 ;
 modelOpts.clipPriors = false ;
 modelOpts.net_init = @ssd_init ;
 modelOpts.deploy_func = @ssd_deploy ;
 modelOpts.batchSize = train.batchSize ;
 modelOpts.get_batch = @ssd_train_get_batch ;
+modelOpts.architecture = opts.architecture ;
 
 
 % -------------------------

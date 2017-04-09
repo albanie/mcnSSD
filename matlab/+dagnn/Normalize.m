@@ -1,21 +1,12 @@
 classdef Normalize < dagnn.ElementWise
-  properties
-    channelShared = false 
-    acrossSpatial = false
-  end
 
   methods
     function outputs = forward(obj, inputs, params)
-      outputs{1} = vl_nnscalenorm(inputs{1}, params{1}, [], ...
-                                    'channelShared', obj.channelShared, ...
-                                    'acrossSpatial', obj.acrossSpatial) ;
+      outputs{1} = vl_nnscalenorm(inputs{1}, params{1}) ;
     end
 
     function [derInputs, derParams] = backward(obj, inputs, params, derOutputs)
-      ders = vl_nnscalenorm(inputs{1}, params{1}, ...
-                                         derOutputs{1}, ...
-                                        'channelShared', obj.channelShared, ...
-                                        'acrossSpatial', obj.acrossSpatial) ;
+      ders = vl_nnscalenorm(inputs{1}, params{1}, derOutputs{1}) ;
       [derInputs, derParams] = deal(ders(1), ders(2)) ; 
     end
 
