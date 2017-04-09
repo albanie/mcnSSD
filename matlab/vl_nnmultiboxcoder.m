@@ -119,14 +119,8 @@ opts.matchingNegIndices = {} ;
 opts.ignoreXBoundaryBoxes = false ;
 opts = vl_argparse(opts, varargin, 'nonrecursive') ;
 
-
 % until larger batch sizes are handled properly
 batchSize = size(x, 4) ;
-
-% check gt bounding boxes are valid
-%cellfun(@(x) assert(all(0 <= x(:) & x(:) <= 1), ...
-%        'MULTIBOXCODER:invalidGroundTruthBoxes', ...
-%        'ground truth boxes must lie in [0,1]'), gt) ;
 
 cellfun(@(x) assert(all(all(x(:,3:4) - x(:,1:2) > 0)), ...
         'MULTIBOXCODER:invalidGroundTruthBoxes', ...

@@ -53,8 +53,8 @@ mean           77.54                77.75
 
 ### Speed
 
-The pre-trained `ssd-pascal-vggvd-300-ft` model (pre-trained on coco and 
-fine-tuned on pascal) runs at approximately 68 Hz on a Tesla M-40.
+The pre-trained `ssd-pascal-vggvd-300` model runs at approximately 
+58 Hz on a Tesla M-40.
 
 
 ### Installation

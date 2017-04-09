@@ -9,7 +9,7 @@ classdef Reshape < dagnn.ElementWise
 
   methods
     function outputs = forward(obj, inputs, params)
-      outputs{1} = vl_nnreshape(inputs{1}, obj.shape, []) ;
+      outputs{1} = vl_nnreshape(inputs{1}, obj.shape) ;
       obj.inputSizes = cellfun(@size, inputs, 'UniformOutput', false) ;
     end
 

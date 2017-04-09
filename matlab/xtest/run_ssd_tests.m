@@ -8,8 +8,7 @@ opts.cpu = true ;
 opts.gpu = false ;
 opts.single = true ;
 opts.double = false ;
-%opts.command = 'nn' ;
-opts.command = 'ut' ; % test utils
+opts.command = 'nn' ;
 opts = vl_argparse(opts, varargin) ;
 
 import matlab.unittest.constraints.* ;
@@ -33,15 +32,9 @@ if ~opts.single
 end
 
 % add test class to path
-addpath(genpath(fullfile(vl_rootnn, 'matlab', 'xtest'))) ;
-
-ssdRoot = fullfile(vl_rootnn, 'examples', 'ssd') ;
-addpath(genpath(ssdRoot)) ;
-
-% run ssd-specific dev tests
-ssdTestFolder = fullfile(ssdRoot, 'matlab/xtest/suite', 'dev') ;
-%ssdTestFolder = fullfile(ssdRoot, 'matlab/xtest/suite') ;
-suite = matlab.unittest.TestSuite.fromFolder(ssdTestFolder, sel) ;
+suiteDir = fullfile(vl_rootnn, 'contrib', 'mcnSSD/matlab/xtest/suite') ;
+addpath(suiteDir) ;
+suite = matlab.unittest.TestSuite.fromFolder(suiteDir, sel) ;
 runner = matlab.unittest.TestRunner.withTextOutput('Verbosity',3);
 result = runner.run(suite);
 display(result)

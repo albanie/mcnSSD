@@ -1,4 +1,4 @@
-function y = vl_nnreshape(x, shape, dzdy, varargin)
+function y = vl_nnreshape(x, shape, varargin)
 % VL_NNRESHAPE Feature reshaping
 %   Y = VL_NNRESHAPE(X, SHAPE) reshpaes the input data X to have
 %   the dimensions specified by SHAPE. X is a SINGLE array of 
@@ -24,6 +24,13 @@ function y = vl_nnreshape(x, shape, dzdy, varargin)
 %
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
+
+if ~isempty(varargin) && ~ischar(varargin{1}) 
+  dzdy = varargin{1} ;
+  varargin(1) = [] ;
+else
+  dzdy = [] ;
+end
 
 opts.inputSizes = [] ;
 opts = vl_argparse(opts, varargin) ;
