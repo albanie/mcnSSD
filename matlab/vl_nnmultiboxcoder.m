@@ -1,4 +1,4 @@
-function y = vl_nnmultiboxcoder(x, v, p, gt, l, dzdy, varargin) 
+function y = vl_nnmultiboxcoder(x, v, p, gt, l, varargin) 
 %VL_NNMULTIBOXCODER encodes/decodes labels/predictions into locations
 %   Y = VL_NNMULTIBOXCODER(X, V, P, GT, L) encodes the training
 %   annotations and the network outputs into a common format 
@@ -50,48 +50,14 @@ function y = vl_nnmultiboxcoder(x, v, p, gt, l, dzdy, varargin)
 %    The number of classes predicted by the network (used to decode the
 %    inputs X and V). 
 %
-%   `locWeight`:: 1
-%    A scalar used to weight the location loss (produced by applying the 
-%    Huber loss to the bounding box regression) against the class 
-%    prediction loss (typically a softmax). 
-%
-%   `normalization`:: 'VALID'
-%    A string denoting the form of normalization applied to loss outputs
-%    returned to this layer. Can be 'NONE', in which case the losses are
-%    simply summed at every location, or 'VALID', in which case the loss
-%    is divided by the number of contributing inputs (similar to caffe's
-%    normalization loss layer parameter) TODO: Not yet implemented
-%
-%   `shareLocation`:: true 
-%    TODO: doc
-%    TODO: Not yet implemented
-%
 %   `overlapThreshold`:: 0.5 
 %    The threshold used to determine whether a ground truth annotation is 
 %    to be matched to a given prior box. The prior box then becomes a 
 %    positive example during training.
 %
-%   `usePriorForMatching`:: true 
-%    TODO: doc
-%    TODO: Not yet implemented
-%
-%   `hardNegativeMining`:: true 
-%    If true, following the matching phase the negative prior boxes are 
-%    ranked in order of netowrk class confidence for the non-background
-%    object classes.  Only the top ranked negative instances are then 
-%    used during training.  If false, all negatives are used.
-%    TODO: false is not yet implemented
-%
-%   `hardNegativeMining`:: true 
-%    If true, following the matching phase the negative prior boxes are 
-%    ranked in order of netowrk class confidence for the non-background
-%    object classes.  Only the top ranked negative instances are then 
-%    used during training.  If false, all negatives are used.
-%
 %   `negPosRatio`:: 3 
-%    The ratio of negative to positive instances used during training 
-%    (note that this option is only used if `hardNegativeMining` is 
-%    true).
+%    The ratio of negative to positive instances used during hard negative 
+%    mining.
 %
 %   `backgroundLabel`:: 1 
 %    Labels in `L` with this value are not used as positive training 
@@ -105,33 +71,26 @@ function y = vl_nnmultiboxcoder(x, v, p, gt, l, dzdy, varargin)
 %    The indices of the negatively matched prior boxes (only used in 
 %    backward pass.
 
-opts.locWeight = 1 ;
 opts.negPosRatio = 3 ;
 opts.numClasses = 21 ;
 opts.backgroundLabel = 1 ;
-opts.shareLocation = true ;
 opts.overlapThreshold = 0.5 ;
-opts.normalization = 'VALID' ;
-opts.usePriorForMatching = true ;
-opts.hardNegativeMining = true ;
 opts.matchingPosIndices = {} ;
 opts.matchingNegIndices = {} ;
 opts.ignoreXBoundaryBoxes = false ;
-opts = vl_argparse(opts, varargin, 'nonrecursive') ;
+[dzdy, opts] = vl_argparseder(opts, varargin) ;
 
-% until larger batch sizes are handled properly
-batchSize = size(x, 4) ;
-
-cellfun(@(x) assert(all(all(x(:,3:4) - x(:,1:2) > 0)), ...
+cellfun(@(b) assert(all(all(b(:,3:4) - b(:,1:2) > 0)), ...
         'MULTIBOXCODER:invalidGroundTruthBoxes', ...
         'ground truth boxes must be in the (xmin, ymin, xmax, ymax) format'), ...
         gt) ;
 
-numGtBoxes = cellfun(@(x) size(x, 1), gt) ;
+batchSize = size(x, 4) ;
 numPriors = size(p, 1) / 4 ;
+numGtBoxes = cellfun(@(x) size(x, 1), gt) ;
 
 % output the decoded class predictions and extended labels
-if nargin <= 1 || isempty(dzdy)
+if isempty(dzdy)
 
     % ----------------------------------------------------
     % Decoding predctions, priors and ground truth annotations
@@ -184,19 +143,14 @@ if nargin <= 1 || isempty(dzdy)
         targets{i} = priorCoder(repGtBoxesWH, pCenWH(matchIdx,:), ...
                         pVar(matchIdx, :), 'targets') ;
 
-        % DEBUG
-        if any(any(imag(targets{i})))
-            keyboard
-        end
-
         targetPreds_ = cellfun(@(x) locPreds_(x,:), matches, 'Uni', false) ;
         targetPreds{i} = vertcat(targetPreds_{:}) ;
 
         % Add hard negatives
         hardNegs = hardNegatives(confPreds_, matches, allOverlaps, ignored, ...
-                                    'backgroundLabel', opts.backgroundLabel, ...
-                                    'negPosRatio', opts.negPosRatio, ...
-                                    'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
+                          'backgroundLabel', opts.backgroundLabel, ...
+                          'negPosRatio', opts.negPosRatio, ...
+                          'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
 
         % store the matching indices for backprop pass
         % NOTE: only the positives are used to compute the regression loss
@@ -209,7 +163,7 @@ if nargin <= 1 || isempty(dzdy)
 
         % add the negative labels
         extendedLabels{i} = horzcat(extendedLabels_{:}, ...
-                                ones(1, numel(hardNegs)) * opts.backgroundLabel) ;
+                           ones(1, numel(hardNegs)) * opts.backgroundLabel) ;
 
         % compute the predicted labels
         posPreds = cellfun(@(x) confPreds_(x,:), matches, 'Uni', false) ;

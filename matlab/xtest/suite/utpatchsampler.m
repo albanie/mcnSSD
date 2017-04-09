@@ -2,9 +2,10 @@ classdef utpatchsampler < matlab.unittest.TestCase
 
   properties (TestParameter)
     opts = struct('numTrials', 50,  ...
-                  'minPatchSize', 0.3, ...
                   'minAspect', 0.5, ...
-                  'maxAspect', 2) ;
+                  'maxAspect', 2, ...
+                  'minPatchScale', 0.3, ...
+                  'maxPatchScale', 1) ;
   end
 
   methods (Test)
@@ -27,7 +28,7 @@ classdef utpatchsampler < matlab.unittest.TestCase
               count = count + 1 ;
           end
       end
-      expectedBounds = [0.3 * numSimulations, 0.4 * numSimulations] ;
+      expectedBounds = [0.15 * numSimulations, 0.3 * numSimulations] ;
       inRange = expectedBounds(1) < count && count < expectedBounds(2) ;
       test.verifyTrue(inRange) ;
     end

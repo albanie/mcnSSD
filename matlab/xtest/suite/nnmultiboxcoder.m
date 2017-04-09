@@ -32,9 +32,8 @@ classdef nnmultiboxcoder < nntest
         x = randn(1,1,numLocPreds, batchSize,'single') ;
         v = randn(1,1,numConfPreds, batchSize,'single') ;
         p = cat(3, priorBoxes(:), priorVars) ;
-        data = randn(300, 300, 3, batchSize) ;
 
-        y = vl_nnmultiboxcoder(x, v, p, data, gt, l, []) ;
+        y = vl_nnmultiboxcoder(x, v, p, gt, l) ;
 
         posMatches = y{5} ;
         negMatches = y{6} ;
@@ -43,27 +42,29 @@ classdef nnmultiboxcoder < nntest
         derLocs = test.randn(size(y{1})) / 100 ;
         derConfs = test.randn(size(y{3})) / 100 ;
         dzdy = { derLocs, derConfs } ;
-        dzdxv = vl_nnmultiboxcoder(x, v, p, data, gt, l, dzdy, ...
+        dzdxv = vl_nnmultiboxcoder(x, v, p, gt, l, dzdy, ...
                                     'matchingPosIndices', posMatches, ...
                                     'matchingNegIndices', negMatches) ;
         dzdx = dzdxv{1} ;
         dzdv = dzdxv{2} ;
 
-        test.der(@(x) forward_wrapper(x,v,p,data,gt,l,'locPreds'), x, dzdy{1}, dzdx, test.range * 1e-3) ;
+        test.der(@(x) forward_wrapper(x,v,p,gt,l,'locPreds'), x, ...
+                                         dzdy{1}, dzdx, test.range * 1e-3) ;
 
         % NOTE: the delta on this test must be small to avoid "flipping" the 
         % hard negatives
-        test.der(@(v) forward_wrapper(x,v,p,data,gt,l,'confPreds'), v, dzdy{2}, dzdv, test.range * 1e-5) ;
+        test.der(@(v) forward_wrapper(x,v,p,gt,l,'confPreds'), v, ...
+                                          dzdy{2}, dzdv, test.range * 1e-5) ;
     end
 
   end
 end
 
 % ------------------------------------------------------
-function y = forward_wrapper(x,v,p,data,gt,l,target)
+function y = forward_wrapper(x,v,p,gt,l,target)
 % ------------------------------------------------------
 
-y = vl_nnmultiboxcoder(x,v,p,data,gt,l,[]) ;
+y = vl_nnmultiboxcoder(x,v,p,gt,l) ;
 switch target
     case 'locPreds'
         y = y{1} ;

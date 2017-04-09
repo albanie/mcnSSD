@@ -25,20 +25,13 @@ function y = vl_nnreshape(x, shape, varargin)
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
 
-if ~isempty(varargin) && ~ischar(varargin{1}) 
-  dzdy = varargin{1} ;
-  varargin(1) = [] ;
-else
-  dzdy = [] ;
-end
-
-opts.inputSizes = [] ;
-opts = vl_argparse(opts, varargin) ;
+opts = struct() ;
+[dzdy, opts] = vl_argparseder(opts, varargin) ;
 
 batchSize = size(x, 4);
 
 if isempty(dzdy)
     y = reshape(x, shape{1}, shape{2}, shape{3}, batchSize) ;
 else
-    y = reshape(dzdy, opts.inputSizes{:}) ;
+    y = reshape(dzdy, size(x)) ;
 end

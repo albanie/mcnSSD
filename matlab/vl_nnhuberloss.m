@@ -1,4 +1,4 @@
-function y = vl_nnhuberloss(x, t, dzdy, varargin)
+function y = vl_nnhuberloss(x, t, varargin)
 %VL_NNHUBERLOSS computes the Huber Loss
 %   Y = VL_NNHUBERLOSS(X, T) computes the Huber Loss (also known 
 %   as the "smooth L1 loss" between an N x 1 array of inputs 
@@ -39,14 +39,14 @@ function y = vl_nnhuberloss(x, t, dzdy, varargin)
 
 opts.sigma = 1 ;
 opts.instanceWeights = ones(size(x)) ;
-opts = vl_argparse(opts, varargin, 'nonrecursive') ;
+[dzdy, opts] = vl_argparseder(opts, varargin) ;
 
 delta = x - t ;
 absDelta = abs(delta) ;
 sigma2 = opts.sigma ^ 2 ;
 linearRegion = (absDelta > 1. / sigma2) ;
 
-if nargin <= 1 || isempty(dzdy)
+if isempty(dzdy)
     absDelta(linearRegion) = absDelta(linearRegion) - 0.5 / sigma2 ;
     absDelta(~linearRegion) = 0.5 * sigma2 * absDelta(~linearRegion) .^ 2 ;
     y = opts.instanceWeights(:)' * absDelta(:) ;

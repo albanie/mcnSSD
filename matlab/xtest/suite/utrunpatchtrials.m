@@ -2,9 +2,10 @@ classdef utrunpatchtrials < matlab.unittest.TestCase
 
   properties (TestParameter)
     opts = struct('numTrials', 50,  ...
-                  'minPatchSize', 0.3, ...
                   'minAspect', 0.5, ...
-                  'maxAspect', 2) ;
+                  'maxAspect', 2, ...
+                  'minPatchScale', 0.1, ...
+                  'maxPatchScale', 1) ;
   end
 
   methods (Test)
@@ -35,7 +36,7 @@ classdef utrunpatchtrials < matlab.unittest.TestCase
       targetsWH = [ 0.1 0.1 0.9 0.9 ] ;
       strategy = 'rand_patch' ;
       patch = runPatchTrials(targetsWH, strategy, randSource, opts) ;
-      expectedPatchSize = 0.65 ;
+      expectedPatchSize = 0.3025 ;
       patchSize = (patch(3) - patch(1)) * (patch(4) - patch(2)) ;
       test.verifyEqual(patchSize, expectedPatchSize, 'AbsTol', 1e-10) ;
     end
@@ -46,7 +47,7 @@ classdef utrunpatchtrials < matlab.unittest.TestCase
       targetsWH = [ 0.1 0.1 0.15 0.15 ] ;
       strategy = 'jacc_0.9' ;
       patch = runPatchTrials(targetsWH, strategy, randSource, opts) ;
-      expectedPatch = [0 0 1 1] ;
+      expectedPatch = [] ;
       test.verifyEqual(patch, expectedPatch, 'AbsTol', 1e-10) ;
     end
   end

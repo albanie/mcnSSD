@@ -1,9 +1,9 @@
-function y = vl_nnscalenorm(x, w, dzdy, varargin)
+function y = vl_nnscalenorm(x, w, varargin)
 %VL_NNSCALENORM Feature normalization with scaling.
 %   Y = VL_NNSCALENORM(X, W) normalizes input features across 
-%   across channels (and optionally spatial dimensions) to have 
-%   an L2 norm of 1, and scales each channel by a learnable weight 
-%   according to the following formula:
+%   across channels to have an L2 norm of 1, and scales each 
+%   channel by a learnable weight according to the following 
+%   formula:
 %   
 %      Y(i,j,c,n) = X(i,j,c,n) * W(1,1,c) / sum_{k=1}^C (X(i,j,k,n)^2)
 %   
@@ -19,35 +19,12 @@ function y = vl_nnscalenorm(x, w, dzdy, varargin)
 %   
 %      dzDW(1,1,c,1) = X(i,j,k,n) / sum_{k=1}^K (X(i,j,k,n)^2)
 %   
-%   The derivatives with respect to the inputs X are given by:
-%
-%   TODO: add docs here
-%
-%   VL_NNSCALENORM(...,'OPT',VALUE,...) takes the following options:
-%
-%   `acrossSpatial`:: false
-%      If false, the normalization does occurs along input channels at 
-%      separately at every spatial location. If true, the normalization
-%      is performed over channels and spatial locations. 
-%
-%   `channelShared`:: false
-%      If false, each normalized channel is multiplied by a separate weight
-%      (Q = C in the formula above). If true, each activations are multiplied
-%      by the same weight (Q = 1).
-%
 %   NOTES: This layer was introduced in the paper: "ParseNet: Looking Wider 
 %   To See Better". It is useful when combining activations from different 
 %   layers of the network that might possess different scales. 
 
-
-opts.acrossSpatial = false ;
-opts.channelShared = false ;
-opts = vl_argparse(opts, varargin, 'nonrecursive') ;
-
-if opts.acrossSpatial || opts.channelShared
-    error(strcat('cross spatial normalization and weighted ', ...
-                'channel sharing are not yet supported.')) ;
-end
+opts = struct() ;
+[dzdy, opts] = vl_argparseder(struct(), varargin) ;
 
 sz = [1 1 1 1] ;
 sz(1:numel(size(x))) = size(x) ;
@@ -58,7 +35,7 @@ kappa = 0 ; alpha = 1 ; beta = 0.5 ; N = 2 * size(x,3) ;
 normParams = [N kappa alpha beta] ;
 normalizedFeats = vl_nnnormalize(x, normParams) ;
 
-if nargin <= 1 || isempty(dzdy)
+if isempty(dzdy)
     y = multipliers .* vl_nnnormalize(x, [N kappa alpha beta]) ;
 else
     dzdw_ = dzdy .* normalizedFeats ;

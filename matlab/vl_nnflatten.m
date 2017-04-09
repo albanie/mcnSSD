@@ -1,4 +1,4 @@
-function y = vl_nnflatten(x, axis, dzdy, varargin)
+function y = vl_nnflatten(x, axis, varargin)
 %VL_NNFLATTEN flatten features along axis
 %   Y = VL_NNFLATTEN(X, AXIS) flattens input data X along the given 
 %   axis. X is a SINGLE array of dimension H x W x C x N where (H,W) 
@@ -17,6 +17,8 @@ function y = vl_nnflatten(x, axis, dzdy, varargin)
 %   The derivative DZDY has the same dimension of the output Y and
 %   The derivative DZDX has the same dimension as the input X.
 
+opts = struct() ;
+[dzdy, opts] = vl_argparseder(opts, varargin) ;
 assert(ismember(axis, [1 2 3]), 'flatten axis must be 1, 2 or 3') ;
 
 sz = size(x) ;
@@ -24,7 +26,7 @@ batchSize = size(x,4) ;
 outputSize = [1 1 1 batchSize] ;
 outputSize(axis) = prod(sz(1:min(length(sz),3))) ;
 
-if nargin <= 1 || isempty(dzdy)
+if isempty(dzdy)
    y = reshape(x, outputSize) ;
 else
     y = reshape(dzdy, sz) ;

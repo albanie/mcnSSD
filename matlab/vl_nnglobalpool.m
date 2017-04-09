@@ -1,4 +1,4 @@
-function y = vl_nnglobalpool(x, dzdy, varargin)
+function y = vl_nnglobalpool(x, varargin)
 %VL_NNGLOBALPOOL CNN global poolinng.
 %   Y = VL_NNGLOBALPOOL(X) applies the pooling operator to all
 %   spatial locations of the data X. X is a SINGLE array of dimension 
@@ -29,7 +29,7 @@ function y = vl_nnglobalpool(x, dzdy, varargin)
 % the terms of the BSD license (see the COPYING file).
 
 opts.method = 'avg' ;
-opts = vl_argparse(opts, varargin, 'nonrecursive') ;
+[dzdy, opts] = vl_argparseder(opts, varargin) ;
 
 if nargin <= 1 || isempty(dzdy)
     switch opts.method

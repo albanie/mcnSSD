@@ -1,5 +1,4 @@
 function patch = runPatchTrials(targetsWH, strategy, randSource, opts)
-%TODO: docs
 
 % check random samples are appropriate
 assert(all(size(randSource) == [opts.numTrials 4]), ...
@@ -55,17 +54,11 @@ end
 %% select patch
 matches = find(max(overlaps, [], 1) >= minOverlap) ;
 
-%fileID = fopen('patchAnalysis.txt', 'a') ;
-
  % if no matches, stick to original sample
 if ~length(matches)
-    %fprintf(fileID,'0 %s\n', strategy);
     patch = [] ;
-    %patch = [ 0 0 1 1 ] ;
 else 
-    %fprintf(fileID,'1 %s\n', strategy);
     % otherwise return first match
     patchWH = potentialBoxes(matches(1), :) ;
     patch = bboxCoder(patchWH, 'MinWH', 'MinMax') ;
 end
-%fclose(fileID) ;

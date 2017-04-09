@@ -4,11 +4,11 @@ function test_mcnSSD
 % ------------------------
 
 % add tests to path
-path = fullfile(fileparts(mfilename('fullpath')), 'matlab/xtest') ;
-addpath(path) ;
+addpath(fullfile(fileparts(mfilename('fullpath')), 'matlab/xtest')) ;
+addpath(fullfile(vl_rootnn, 'matlab/xtest/suite')) ;
 
 % test network layers
 run_ssd_tests('command', 'nn') ;
 
 % test utils
-%run_ssd_tests('command', 'ut') ;
+run_ssd_tests('command', 'ut') ;
