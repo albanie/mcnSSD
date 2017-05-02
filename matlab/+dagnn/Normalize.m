@@ -1,5 +1,10 @@
 classdef Normalize < dagnn.ElementWise
 
+  properties
+    channelShared = [];
+    acrossSpatial = [];
+  end
+
   methods
     function outputs = forward(obj, inputs, params)
       outputs{1} = vl_nnscalenorm(inputs{1}, params{1}) ;
