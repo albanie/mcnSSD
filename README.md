@@ -73,9 +73,10 @@ the following three commands from the root directory of your MatConvNet
 installation:
 
 ```
-vl_contrib('install', 'mcnSSD', 'contribUrl', 'github.com/albanie/matconvnet-contrib-test/') ;
-vl_contrib('compile', 'mcnSSD', 'contribUrl', 'github.com/albanie/matconvnet-contrib-test/') ;
-vl_contrib('setup', 'mcnSSD', 'contribUrl', 'github.com/albanie/matconvnet-contrib-test/') ;
+vl_contrib('install', 'mcnSSD') ;
+vl_contrib('compile', 'mcnSSD') ;
+vl_contrib('setup', 'mcnSSD') ;
+vl_contrib('test', 'mcnSSD') ; % optional
 ```
 
 
