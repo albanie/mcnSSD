@@ -1,52 +1,41 @@
 function ssd_pascal_evaluation(varargin)
+%SSD_PASCAL_EVALUATION evaluate SSD detector on pascal VOC
 
 opts.net = [] ;
-opts.gpus = [1] ;
+opts.gpus = 1 ;
+opts.evalVersion = 'fast' ;
 opts.modelName = 'ssd-pascal-vggvd-300' ;
-opts.evalVersion = '2010' ;
 opts = vl_argparse(opts, varargin) ;
 
-% ---------------------------------------
-%                            load network
-% ---------------------------------------
+% load network
 if isempty(opts.net)
-    net = ssd_zoo(opts.modelName) ;
+  net = ssd_zoo(opts.modelName) ; 
 else
-    net = opts.net ;
+  net = opts.net ; 
 end
 
-% ---------------------------------------
-%                      evaluation options
-% ---------------------------------------
+% evaluation options
 opts.testset = 'test' ; 
 opts.prefetch = true ;
 opts.fixedSizeInputs = false ;
 
-% ---------------------------------------
-%                    configure batch opts
-% ---------------------------------------
+% configure batch opts
 batchOpts.batchSize = 8 ;
 batchOpts.numThreads = 4 ;
 batchOpts.use_vl_imreadjpeg = true ; 
 batchOpts.imageSize = net.meta.normalization.imageSize ;
 
-% ---------------------------------------
-%                     cache configuration 
-% ---------------------------------------
+% cache configuration 
 cacheOpts.refreshPredictionCache = false ;
 cacheOpts.refreshDecodedPredCache = false ;
 cacheOpts.refreshEvaluationCache = false ;
 cacheOpts.refreshFigures = false ;
 
-% -------------------------
 % configure model options
-% -------------------------
 modelOpts.predVar = 'detection_out' ;
 modelOpts.get_eval_batch = @ssd_eval_get_batch ;
 
-% -------------------------
 % configure dataset options
-% -------------------------
 dataOpts.name = 'pascal' ;
 dataOpts.decoder = 'serial' ;
 dataOpts.getImdb = @getPascalImdb ;
@@ -58,16 +47,12 @@ dataOpts.imdbPath = fullfile(vl_rootnn, 'data/pascal/standard_imdb/imdb.mat') ;
 dataOpts.configureImdbOpts = @configureImdbOpts ;
 dataOpts.resultsFormat = 'minMax' ; 
 
-% -------------------------
 % configure paths
-% -------------------------
-expDir = fullfile(vl_rootnn, 'data/evaluations', dataOpts.name, ...
-                                                   opts.modelName) ;
+tail = fullfile('evaluations', dataOpts.name, opts.modelName) ;
+expDir = fullfile(vl_rootnn, 'data', tail) ;
 resultsFile = sprintf('%s-%s-results.mat', opts.modelName, opts.testset) ;
 rawPredsFile = sprintf('%s-%s-raw-preds.mat', opts.modelName, opts.testset) ;
 decodedPredsFile = sprintf('%s-%s-decoded.mat', opts.modelName, opts.testset) ;
-
-
 evalCacheDir = fullfile(expDir, 'eval_cache') ;
 
 if ~exist(evalCacheDir, 'dir') 
@@ -80,9 +65,7 @@ cacheOpts.decodedPredsCache = fullfile(evalCacheDir, decodedPredsFile) ;
 cacheOpts.resultsCache = fullfile(evalCacheDir, resultsFile) ;
 cacheOpts.evalCacheDir = evalCacheDir ;
 
-% -------------------------
 % configure meta options
-% -------------------------
 opts.dataOpts = dataOpts ;
 opts.modelOpts = modelOpts ;
 opts.batchOpts = batchOpts ;
@@ -140,12 +123,8 @@ VOCopts.devkitCode = fullfile(VOCRoot, 'VOCcode') ;
 assert(logical(exist(VOCRoot, 'dir')), 'VOC root directory not found') ;
 assert(logical(exist(VOCopts.devkitCode, 'dir')), 'devkit code not found') ;
 
-currentDir = pwd ;
-cd(VOCRoot) ;
-addpath(VOCopts.devkitCode) ;
-
-% VOCinit loads database options into a variable called VOCopts
-VOCinit ; 
+currentDir = pwd ; cd(VOCRoot) ; addpath(VOCopts.devkitCode) ;
+VOCinit ; % VOCinit loads database options into a variable called VOCopts
 
 dataDir = fullfile(VOCRoot, '2007') ;
 VOCopts.localdir = fullfile(dataDir, 'local') ;
@@ -161,17 +140,12 @@ detDir = fullfile(expDir, 'VOCdetections') ;
 requiredDirs = {VOCopts.localdir, VOCopts.cacheDir, detDir} ;
 for i = 1:numel(requiredDirs)
     reqDir = requiredDirs{i} ;
-    if ~exist(reqDir, 'dir') 
-        mkdir(reqDir) ;
-    end
+    if ~exist(reqDir, 'dir') , mkdir(reqDir) ; end
 end
 
 VOCopts.detrespath = fullfile(detDir, sprintf('%%s_det_%s_%%s.txt', 'test')) ;
-
 dataOpts.VOCopts = VOCopts ;
-
-% return to original directory
-cd(currentDir) ;
+cd(currentDir) ; % return to original directory
 
 % ---------------------------------------------------------------------------
 function displayPascalResults(modelName, aps, opts)
@@ -181,5 +155,4 @@ fprintf('\n============\n') ;
 fprintf(sprintf('%s set performance of %s:', opts.testset, modelName)) ;
 fprintf('%.1f (mean ap) \n', 100 * mean(aps)) ;
 fprintf('\n============\n') ;
-
 printPascalResults(opts.cacheOpts.evalCacheDir, 'orientation', 'portrait') ;

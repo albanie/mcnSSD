@@ -402,7 +402,7 @@ namespace vl { namespace impl {
                   const std::vector<int> &labelIndices = it->second ;
                   if (confScores.find(label) == confScores.end()) {
                       // Something bad happened for current label.
-                      printf("Could not find location predictions for %s", label) ;
+                      printf("Could not find location predictions for %d", label) ;
                       continue;
                   }
                   const std::vector<float> &scores = confScores.find(label)->second ;

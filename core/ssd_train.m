@@ -4,11 +4,13 @@ function ssd_train(expDir, opts, varargin)
 %                                                     Prepare imdb
 % ----------------------------------------------------------------
 
-if exist(opts.dataOpts.imdbPath, 'file')
-    imdb = load(opts.dataOpts.imdbPath) ;
+imdbPath = opts.dataOpts.imdbPath ;
+if exist(imdbPath, 'file')
+    imdb = load(imdbPath) ;
 else
     imdb = opts.dataOpts.getImdb(opts) ;
-    save(opts.dataOpts.imdbPath, '-struct', 'imdb') ;
+    if ~exist(fileparts(imdbPath), 'dir'), mkdir(fileparts(imdbPath)) ; end
+    save(imdbPath, '-struct', 'imdb') ;
 end
 
 [opts, imdb] = opts.dataOpts.prepareImdb(imdb, opts) ;
