@@ -30,10 +30,12 @@ end
 
 bestEpoch = findBestValCheckpoint(expDir, opts.priorityMetric);
 preciousEpochs = [bestEpoch lastEpoch];
-removeOtherCheckpoints(expDir, preciousEpochs);
-fprintf('----------------------- \n');
-fprintf('%s directory cleaned: \n', expDir);
-fprintf('----------------------- \n');
+if opts.prune
+  removeOtherCheckpoints(expDir, preciousEpochs);
+  fprintf('----------------------- \n');
+  fprintf('%s directory cleaned: \n', expDir);
+  fprintf('----------------------- \n');
+end
 
 % -------------------------------------------------------------------------
 function removeOtherCheckpoints(expDir, preciousEpochs)
