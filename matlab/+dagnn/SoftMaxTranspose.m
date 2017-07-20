@@ -6,7 +6,7 @@ classdef SoftMaxTranspose < dagnn.ElementWise
 
   methods
     function outputs = forward(obj, inputs, params)
-      outputs{1} = vl_nnsoftmaxt(inputs{1}, [], 'dim', obj.dim) ;
+      outputs{1} = vl_nnsoftmaxt(inputs{1}, 'dim', obj.dim) ;
     end
 
     function [derInputs, derParams] = backward(obj, inputs, params, derOutputs)

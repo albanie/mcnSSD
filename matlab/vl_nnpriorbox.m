@@ -1,6 +1,6 @@
 function y = vl_nnpriorbox(x, im, varargin)
-%VL_NNPRIORBOX constructs prior boxes for a feature map.
-%   Y = VL_NNPRIORBOX(X, IM) produces a set of prior boxes as defined
+%VL_NNPRIORBOX constructs prior boxes for a feature map.  
+%   Y = VL_NNPRIORBOX(X, IM) produces a set of prior boxes as defined 
 %   in the SSD paper.  The core idea is to generate a set of evenly
 %   spaced boxes which tile the feature layer. At each position in the
 %   tiling, boxes are created with multiple aspect ratios and sizes, where
@@ -59,7 +59,7 @@ function y = vl_nnpriorbox(x, im, varargin)
 %    Dictates how many pixels in the input image, IM correspond 
 %    to a single pixel in the feature layer X
 
-opts.aspectRatios = [2] ;
+opts.aspectRatios = 2 ;
 opts.flip = true ;
 opts.clip = false ;
 opts.minSize = 0.1 ;
@@ -152,4 +152,4 @@ if opts.clip
 end
 
 variances = repmat(opts.variance, [numBoxes 1]) ;
-y = single(cat(3, boxes, variances)) ;
+y = cast(cat(3, boxes, variances), 'like', x) ;
