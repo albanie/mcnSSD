@@ -1,6 +1,6 @@
 function ssd_pascal_train(varargin)
 
-opts.gpus = [1 2] ;
+opts.gpus = [1] ;
 opts.continue = true ;
 opts.confirmConfig = true ;
 opts.pruneCheckpoints = true ;
@@ -79,7 +79,7 @@ train.numEpochs = numel(train.learningRate) ;
 % ----------------------------
 % configure batch opts
 % ----------------------------
-batchOpts.clipTargets = false ;
+batchOpts.clipTargets = true ;
 batchOpts.imageSize = repmat(modelOpts.architecture, 1, 2) ;
 batchOpts.patchOpts.use = dataOpts.patchAugmentation ;
 batchOpts.patchOpts.numTrials = 50 ;
@@ -87,6 +87,7 @@ batchOpts.patchOpts.minPatchScale = 0.3 ;
 batchOpts.patchOpts.maxPatchScale = 1 ;
 batchOpts.patchOpts.minAspect = 0.5 ;
 batchOpts.patchOpts.maxAspect = 2 ;
+batchOpts.patchOpts.clipTargets = batchOpts.clipTargets ;
 
 batchOpts.flipOpts.use = dataOpts.flipAugmentation ;
 batchOpts.flipOpts.prob = 0.5 ;

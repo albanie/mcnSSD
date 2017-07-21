@@ -42,3 +42,7 @@ ymin = yScale * (targetsWH(:,2) - patchWH(2)) ;
 ymax = yScale * (targetsWH(:,2) + targetsWH(:,4) - patchWH(2)) ;
 
 targets = [xmin ymin xmax ymax ] ;
+
+if opts.clipTargets
+  targets = min(max(targets, 0), 1) ;
+end
