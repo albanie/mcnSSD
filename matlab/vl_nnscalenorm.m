@@ -23,23 +23,22 @@ function y = vl_nnscalenorm(x, w, varargin)
 %   To See Better". It is useful when combining activations from different 
 %   layers of the network that might possess different scales. 
 
-opts = struct() ;
-[dzdy, opts] = vl_argparseder(struct(), varargin) ;
+  [dzdy, ~] = vl_argparseder(struct(), varargin) ;
 
-sz = [1 1 1 1] ;
-sz(1:numel(size(x))) = size(x) ;
-multipliers = repmat(w, [sz(1:2) 1 size(x,4)]) ;
+  sz = [1 1 1 1] ;
+  sz(1:numel(size(x))) = size(x) ;
+  multipliers = repmat(w, [sz(1:2) 1 size(x,4)]) ;
 
-%Set Local Response Normalization parameters 
-kappa = 0 ; alpha = 1 ; beta = 0.5 ; N = 2 * size(x,3) ;
-normParams = [N kappa alpha beta] ;
-normalizedFeats = vl_nnnormalize(x, normParams) ;
+  %Set Local Response Normalization parameters 
+  kappa = 0 ; alpha = 1 ; beta = 0.5 ; N = 2 * size(x,3) ;
+  normParams = [N kappa alpha beta] ;
+  normalizedFeats = vl_nnnormalize(x, normParams) ;
 
-if isempty(dzdy)
+  if isempty(dzdy)
     y = multipliers .* vl_nnnormalize(x, [N kappa alpha beta]) ;
-else
+  else
     dzdw_ = dzdy .* normalizedFeats ;
     dzdw = sum(sum(sum(dzdw_,1), 2), 4) ;
     dzdx = vl_nnnormalize(x, normParams, multipliers .* dzdy) ;
     y = {dzdx, dzdw} ;
-end
+  end
