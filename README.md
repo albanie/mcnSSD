@@ -60,16 +60,8 @@ The pre-trained `ssd-pascal-vggvd-300` model runs at approximately
 ### Installation
 
 The easiest way to use this module is to install it with the `vl_contrib` 
-package manager. `vl_contrib` is not yet part of the main MatConvNet 
-distribution, but it can be easily obtained by using the 
-[contrib branch](https://github.com/vlfeat/matconvnet/tree/contrib) of the 
-github repo. To switch to this branch (after cloning), you can simply run 
-
-`git checkout -b contrib origin/contrib`
-
-from the root directory. You will then need to recompile MatConvNet as usual 
-with `vl_compilenn`.  Once this is done, `mcnSSD` can then be installed with 
-the following three commands from the root directory of your MatConvNet 
+package manager. `mcnSSD` can be installed with 
+the following commands from the root directory of your MatConvNet 
 installation:
 
 ```
