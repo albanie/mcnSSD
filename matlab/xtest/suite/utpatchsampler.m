@@ -5,25 +5,24 @@ classdef utpatchsampler < matlab.unittest.TestCase
                   'minAspect', 0.5, ...
                   'maxAspect', 2, ...
                   'minPatchScale', 0.3, ...
-                  'maxPatchScale', 1) ;
+                  'maxPatchScale', 1, ...
+                  'clipTargets', 0) ;
   end
 
   methods (Test)
 
     function checkPatchDistribution(test)
       % sanity check on the patch sampler
-      opts = test.opts ;
       originalImg = [ 0 0 1 1 ] ;
       targets = [0 0 sqrt(0.5) sqrt(0.5)] ;
-      labels = [1] ;
       numSimulations = 1000 ;
-      patches = zeros(numSimulations, 4) ;
+      labels = 1 ;
 
       % count the number of patches that return the
       % original image
       count = 0 ;
       for i = 1:numSimulations
-          [patch,~,~] = patchSampler(targets, labels, opts) ;
+          [patch,~,~] = patchSampler(targets, labels, test.opts) ;
           if all(patch == originalImg)
               count = count + 1 ;
           end
