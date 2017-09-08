@@ -175,7 +175,7 @@ void mexFunction(int nout, mxArray *out[],
 
   /* check for appropriate number of prior predictions */
   int numPriors = priors.getHeight() / 4 ;
-  if ((numPriors != (confPreds.getDepth() / numClasses)) or (numPriors != (locPreds.getDepth() / 4))) {
+  if ((numPriors != (confPreds.getDepth() / numClasses)) | (numPriors != (locPreds.getDepth() / 4))) {
     vlmxError(VLMXE_IllegalArgument, "LOCPREDS and CONFPREDS do not match the given set of priors.") ;
   }
 
