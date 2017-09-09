@@ -71,6 +71,8 @@ vl_contrib('setup', 'mcnSSD') ;
 vl_contrib('test', 'mcnSSD') ; % optional
 ```
 
+The module also requires *autonn*, which can similarly be installed with `vl_contrib` (instructions [here](https://github.com/vlfeat/autonn)).
+
 
 ### Demo
 
@@ -99,7 +101,7 @@ models will be downloaded automatically upon running the
 
 * `matconvnet (tested with v1.0-beta23, v1.0-beta24)`
 * `MATLAB (tested with 2016a)` 
-* [autonn](https://github.com/vlfeat/autonn)
+
 
 `additional GPU-mode dependency`:
 
