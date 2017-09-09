@@ -71,163 +71,163 @@ function y = vl_nnmultiboxcoder(x, v, p, gt, l, varargin)
 %    The indices of the negatively matched prior boxes (only used in 
 %    backward pass.
 
-opts.negPosRatio = 3 ;
-opts.numClasses = 21 ;
-opts.backgroundLabel = 1 ;
-opts.overlapThreshold = 0.5 ;
-opts.matchingPosIndices = {} ;
-opts.matchingNegIndices = {} ;
-opts.ignoreXBoundaryBoxes = false ;
-[dzdy, opts] = vl_argparseder(opts, varargin) ;
+  opts.negPosRatio = 3 ;
+  opts.numClasses = 21 ;
+  opts.backgroundLabel = 1 ;
+  opts.overlapThreshold = 0.5 ;
+  opts.matchingPosIndices = {} ;
+  opts.matchingNegIndices = {} ;
+  opts.ignoreXBoundaryBoxes = false ;
+  [opts, dzdy] = vl_argparsepos(opts, varargin) ;
 
-cellfun(@(b) assert(all(all(b(:,3:4) - b(:,1:2) > 0)), ...
-        'MULTIBOXCODER:invalidGroundTruthBoxes', ...
-        'ground truth boxes must be in the (xmin, ymin, xmax, ymax) format'), ...
-        gt) ;
+  cellfun(@(b) assert(all(all(b(:,3:4) - b(:,1:2) > 0)), ...
+          'MULTIBOXCODER:invalidGroundTruthBoxes', ...
+          'ground truth boxes must be in the (xmin, ymin, xmax, ymax) format'), ...
+          gt) ;
 
-batchSize = size(x, 4) ;
-numPriors = size(p, 1) / 4 ;
-numGtBoxes = cellfun(@(x) size(x, 1), gt) ;
+  batchSize = size(x, 4) ;
+  numPriors = size(p, 1) / 4 ;
+  numGtBoxes = cellfun(@(x) size(x, 1), gt) ;
 
-% output the decoded class predictions and extended labels
-if isempty(dzdy)
+  % output the decoded class predictions and extended labels
+  if isempty(dzdy)
 
-    % ----------------------------------------------------
-    % Decoding predctions, priors and ground truth annotations
-    % ----------------------------------------------------
+      % ----------------------------------------------------
+      % Decoding predctions, priors and ground truth annotations
+      % ----------------------------------------------------
 
-    locPreds = permute(reshape(x, 4, numPriors, 1, batchSize), [ 2 1 3 4]) ;
-    confPreds = permute(reshape(v, opts.numClasses, numPriors, 1, batchSize), ...
-                                                            [2 1 3 4]) ;
+      locPreds = permute(reshape(x, 4, numPriors, 1, batchSize), [ 2 1 3 4]) ;
+      confPreds = permute(reshape(v, opts.numClasses, numPriors, 1, batchSize), ...
+                                                              [2 1 3 4]) ;
 
-    % Priors are identical across a batch, so we only produce one 
-    % set per batch
-    priors = reshape(p, numPriors, 4, 2) ;
-    pBoxes = reshape(priors(:,:,1), 4, [])' ;
-    pVar = reshape(priors(:,:,2), 4, [])' ;
+      % Priors are identical across a batch, so we only produce one 
+      % set per batch
+      priors = reshape(p, numPriors, 4, 2) ;
+      pBoxes = reshape(priors(:,:,1), 4, [])' ;
+      pVar = reshape(priors(:,:,2), 4, [])' ;
 
-    % loop over batch
-    for i = 1:batchSize
+      % loop over batch
+      for i = 1:batchSize
 
-        locPreds_ = locPreds(:,:,:,i) ;
-        confPreds_ = confPreds(:,:,:,i) ;
-        numGtBoxes_ = numGtBoxes(i) ;
-        l_ = l{i} ;
-        gt_ = gt{i} ;
+          locPreds_ = locPreds(:,:,:,i) ;
+          confPreds_ = confPreds(:,:,:,i) ;
+          numGtBoxes_ = numGtBoxes(i) ;
+          l_ = l{i} ;
+          gt_ = gt{i} ;
 
-        % ----------------------------------------------------
-        % Matching 
-        % ----------------------------------------------------
+          % ----------------------------------------------------
+          % Matching 
+          % ----------------------------------------------------
 
-        pBoxes = gather(pBoxes) ;
-        [matches, allOverlaps, ignored] = matchPriors(gt_, pBoxes, ...
-                     'overlapThreshold', opts.overlapThreshold, ...
-                     'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
-        matchesPerGt = cellfun(@numel, matches)' ;
-        matchIdx = horzcat(matches{:}) ;
+          pBoxes = gather(pBoxes) ;
+          [matches, allOverlaps, ignored] = matchPriors(gt_, pBoxes, ...
+                       'overlapThreshold', opts.overlapThreshold, ...
+                       'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
+          matchesPerGt = cellfun(@numel, matches)' ;
+          matchIdx = horzcat(matches{:}) ;
 
-        % re-format bounding boxes
-        gtCenWH = bboxCoder(gt_, 'MinMax', 'CenWH') ;
-        pCenWH = bboxCoder(pBoxes, 'MinMax', 'CenWH') ;
+          % re-format bounding boxes
+          gtCenWH = bboxCoder(gt_, 'MinMax', 'CenWH') ;
+          pCenWH = bboxCoder(pBoxes, 'MinMax', 'CenWH') ;
 
-        % Repeat the each gt bounding for every prior it has been matched 
-        % to box to (allows vectorization of the bbox target computation)
-        repGtBoxesWH_ = arrayfun(@(x) repmat(gtCenWH(x,:), ...
-                                [matchesPerGt(x) 1]), 1:numGtBoxes_, ...
-                                'Uni', false) ;
-        repGtBoxesWH = vertcat(repGtBoxesWH_{:}) ;
-            
-        % ------------------------------------------------------
-        % Compute target offsets
-        % ------------------------------------------------------
-        targets{i} = priorCoder(repGtBoxesWH, pCenWH(matchIdx,:), ...
-                        pVar(matchIdx, :), 'targets') ;
+          % Repeat the each gt bounding for every prior it has been matched 
+          % to box to (allows vectorization of the bbox target computation)
+          repGtBoxesWH_ = arrayfun(@(x) repmat(gtCenWH(x,:), ...
+                                  [matchesPerGt(x) 1]), 1:numGtBoxes_, ...
+                                  'Uni', false) ;
+          repGtBoxesWH = vertcat(repGtBoxesWH_{:}) ;
+              
+          % ------------------------------------------------------
+          % Compute target offsets
+          % ------------------------------------------------------
+          targets{i} = priorCoder(repGtBoxesWH, pCenWH(matchIdx,:), ...
+                          pVar(matchIdx, :), 'targets') ;
 
-        targetPreds_ = cellfun(@(x) locPreds_(x,:), matches, 'Uni', false) ;
-        targetPreds{i} = vertcat(targetPreds_{:}) ;
+          targetPreds_ = cellfun(@(x) locPreds_(x,:), matches, 'Uni', false) ;
+          targetPreds{i} = vertcat(targetPreds_{:}) ;
 
-        % Add hard negatives
-        hardNegs = hardNegatives(confPreds_, matches, allOverlaps, ignored, ...
-                          'backgroundLabel', opts.backgroundLabel, ...
-                          'negPosRatio', opts.negPosRatio, ...
-                          'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
+          % Add hard negatives
+          hardNegs = hardNegatives(confPreds_, matches, allOverlaps, ignored, ...
+                            'backgroundLabel', opts.backgroundLabel, ...
+                            'negPosRatio', opts.negPosRatio, ...
+                            'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
 
-        % store the matching indices for backprop pass
-        % NOTE: only the positives are used to compute the regression loss
-        matchingPosIndices{i} = horzcat(matches{:})' ;
-        matchingNegIndices{i} = hardNegs ;
+          % store the matching indices for backprop pass
+          % NOTE: only the positives are used to compute the regression loss
+          matchingPosIndices{i} = horzcat(matches{:})' ;
+          matchingNegIndices{i} = hardNegs ;
 
-        % repeat labels for each ground truth match
-        extendedLabels_ = arrayfun(@(x) repmat(l_(x), [1 numel(matches{x})]), ...
-                                    1:numGtBoxes_, 'Uni', false) ;
+          % repeat labels for each ground truth match
+          extendedLabels_ = arrayfun(@(x) repmat(l_(x), [1 numel(matches{x})]), ...
+                                      1:numGtBoxes_, 'Uni', false) ;
 
-        % add the negative labels
-        extendedLabels{i} = horzcat(extendedLabels_{:}, ...
-                           ones(1, numel(hardNegs)) * opts.backgroundLabel) ;
+          % add the negative labels
+          extendedLabels{i} = horzcat(extendedLabels_{:}, ...
+                             ones(1, numel(hardNegs)) * opts.backgroundLabel) ;
 
-        % compute the predicted labels
-        posPreds = cellfun(@(x) confPreds_(x,:), matches, 'Uni', false) ;
-        negPreds = confPreds_(hardNegs,:) ;
-        classPreds_ = vertcat(posPreds{:}, negPreds) ;
-        classPreds{i} = permute(classPreds_, [ 3 4 2 1]) ; % prepend singletons
-    end
+          % compute the predicted labels
+          posPreds = cellfun(@(x) confPreds_(x,:), matches, 'Uni', false) ;
+          negPreds = confPreds_(hardNegs,:) ;
+          classPreds_ = vertcat(posPreds{:}, negPreds) ;
+          classPreds{i} = permute(classPreds_, [ 3 4 2 1]) ; % prepend singletons
+      end
 
-    % concatenate across the batch
-    targetPreds = cat(1, targetPreds{:}) ;
-    targets = cat(1, targets{:}) ;
-    classPreds = cat(4, classPreds{:}) ;
-    extendedLabels = cat(2, extendedLabels{:}) ;
+      % concatenate across the batch
+      targetPreds = cat(1, targetPreds{:}) ;
+      targets = cat(1, targets{:}) ;
+      classPreds = cat(4, classPreds{:}) ;
+      extendedLabels = cat(2, extendedLabels{:}) ;
 
-    y = { targetPreds, targets, classPreds, extendedLabels, ...
-          matchingPosIndices, matchingNegIndices } ;
+      y = { targetPreds, targets, classPreds, extendedLabels, ...
+            matchingPosIndices, matchingNegIndices } ;
 
-else
-    % sparse matrix operations are (currently) more efficient on the CPU
-    dzdLoc = gather(dzdy{1}) ;
-    dzdConf = gather(squeeze(dzdy{2})') ;
+  else
+      % sparse matrix operations are (currently) more efficient on the CPU
+      dzdLoc = gather(dzdy{1}{1}) ;
+      dzdConf = gather(squeeze(dzdy{1}{2})') ;
 
-    locDer = zeros(numPriors, 4, 1, batchSize, 'single') ;
-    confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'single') ;
+      locDer = zeros(numPriors, 4, 1, batchSize, 'single') ;
+      confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'single') ;
 
-    % reshape the derivatives into the appropriate batch elements
-    locDerSizes = cellfun(@numel, opts.matchingPosIndices) ;
-    confDerSizes = cellfun(@(x,y) numel(x) + numel(y), ...
-                            opts.matchingPosIndices, ...
-                            opts.matchingNegIndices) ;
+      % reshape the derivatives into the appropriate batch elements
+      locDerSizes = cellfun(@numel, opts.matchingPosIndices) ;
+      confDerSizes = cellfun(@(x,y) numel(x) + numel(y), ...
+                              opts.matchingPosIndices, ...
+                              opts.matchingNegIndices) ;
 
-    locCumSizes = [ 0 cumsum(locDerSizes) ] ;
-    confCumSizes = [ 0 cumsum(confDerSizes) ] ;
+      locCumSizes = [ 0 cumsum(locDerSizes) ] ;
+      confCumSizes = [ 0 cumsum(confDerSizes) ] ;
+      
+      for i = 1:batchSize
+          locDer_{i} = dzdLoc(locCumSizes(i) + 1:locCumSizes(i+1),:) ;
+          confDer_{i} = dzdConf(confCumSizes(i) + 1:confCumSizes(i+1),:) ;
+      end
+
+      % loop over batch to fill in the derivatives
+      for i = 1:batchSize
+
+          % scale the derivatives according the number of matched priors
+          matchPos = gather(opts.matchingPosIndices{i}) ;
+          matchNeg = gather(opts.matchingNegIndices{i}) ;
+          matchAll = vertcat(matchPos, matchNeg) ;
+      
+          locDerTmp = double(locDer_{i}) ;
+          confDerTmp = double(confDer_{i}) ;
+      
+          sparsePos = sparse(matchPos, 1:numel(matchPos), 1, ...
+                              numPriors, numel(matchPos)) ;
+          tmp = sparsePos * locDerTmp ;
+          locDer(:,:,:,i) = single(tmp) ;
     
-    for i = 1:batchSize
-        locDer_{i} = dzdLoc(locCumSizes(i) + 1:locCumSizes(i+1),:) ;
-        confDer_{i} = dzdConf(confCumSizes(i) + 1:confCumSizes(i+1),:) ;
-    end
+          sparseAll = sparse(matchAll, 1:numel(matchAll), 1, ...
+                              numPriors, numel(matchAll)) ;
+          tmp = sparseAll * confDerTmp ;
+          confDer(:,:,:,i) = single(tmp) ;
 
-    % loop over batch to fill in the derivatives
-    for i = 1:batchSize
+      end
 
-        % scale the derivatives according the number of matched priors
-        matchPos = gather(opts.matchingPosIndices{i}) ;
-        matchNeg = gather(opts.matchingNegIndices{i}) ;
-        matchAll = vertcat(matchPos, matchNeg) ;
-    
-        locDerTmp = double(locDer_{i}) ;
-        confDerTmp = double(confDer_{i}) ;
-    
-        sparsePos = sparse(matchPos, 1:numel(matchPos), 1, ...
-                            numPriors, numel(matchPos)) ;
-        tmp = sparsePos * locDerTmp ;
-        locDer(:,:,:,i) = single(tmp) ;
-  
-        sparseAll = sparse(matchAll, 1:numel(matchAll), 1, ...
-                            numPriors, numel(matchAll)) ;
-        tmp = sparseAll * confDerTmp ;
-        confDer(:,:,:,i) = single(tmp) ;
+      locDer = cast(reshape(permute(locDer, [2 1 3 4]), size(x)), 'like', x) ;
+      confDer = cast(reshape(permute(confDer, [2 1 3 4]), size(v)), 'like', v) ;
 
-    end
-
-    locDer = cast(reshape(permute(locDer, [2 1 3 4]), size(x)), 'like', x) ;
-    confDer = cast(reshape(permute(confDer, [2 1 3 4]), size(v)), 'like', v) ;
-
-    y = {locDer, confDer} ;
-end
+      y = {locDer, confDer} ;
+  end

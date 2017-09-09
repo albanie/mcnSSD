@@ -37,21 +37,21 @@ function y = vl_nnhuberloss(x, t, varargin)
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
 
-opts.sigma = 1 ;
-opts.instanceWeights = ones(size(x)) ;
-[dzdy, opts] = vl_argparseder(opts, varargin) ;
+  opts.sigma = 1 ;
+  opts.instanceWeights = ones(size(x)) ;
+  [opts, dzdy] = vl_argparsepos(opts, varargin) ;
 
-delta = x - t ;
-absDelta = abs(delta) ;
-sigma2 = opts.sigma ^ 2 ;
-linearRegion = (absDelta > 1. / sigma2) ;
+  delta = x - t ;
+  absDelta = abs(delta) ;
+  sigma2 = opts.sigma ^ 2 ;
+  linearRegion = (absDelta > 1. / sigma2) ;
 
-if isempty(dzdy)
+  if isempty(dzdy)
     absDelta(linearRegion) = absDelta(linearRegion) - 0.5 / sigma2 ;
     absDelta(~linearRegion) = 0.5 * sigma2 * absDelta(~linearRegion) .^ 2 ;
     y = opts.instanceWeights(:)' * absDelta(:) ;
-else
+  else
     delta(linearRegion) = sign(delta(linearRegion));
     delta(~linearRegion) = sigma2 * delta(~linearRegion) ;
-    y = opts.instanceWeights .* delta .* dzdy ;
-end
+    y = opts.instanceWeights .* delta .* dzdy{1} ;
+  end

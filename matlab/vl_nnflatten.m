@@ -17,17 +17,16 @@ function y = vl_nnflatten(x, axis, varargin)
 %   The derivative DZDY has the same dimension of the output Y and
 %   The derivative DZDX has the same dimension as the input X.
 
-opts = struct() ;
-[dzdy, opts] = vl_argparseder(opts, varargin) ;
-assert(ismember(axis, [1 2 3]), 'flatten axis must be 1, 2 or 3') ;
+  [~, dzdy] = vl_argparsepos(struct(), varargin) ;
 
-sz = size(x) ;
-batchSize = size(x,4) ;
-outputSize = [1 1 1 batchSize] ;
-outputSize(axis) = prod(sz(1:min(length(sz),3))) ;
+  assert(ismember(axis, [1 2 3]), 'flatten axis must be 1, 2 or 3') ;
 
-if isempty(dzdy)
-   y = reshape(x, outputSize) ;
-else
-    y = reshape(dzdy, sz) ;
-end
+  sz = size(x) ; batchSize = size(x,4) ;
+  outputSize = [1 1 1 batchSize] ;
+  outputSize(axis) = prod(sz(1:min(length(sz),3))) ;
+
+  if isempty(dzdy)
+    y = reshape(x, outputSize) ;
+  else
+    y = reshape(dzdy{1}, sz) ;
+  end

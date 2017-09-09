@@ -28,19 +28,16 @@ function y = vl_nnglobalpool(x, varargin)
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
 
-opts.method = 'avg' ;
-[dzdy, opts] = vl_argparseder(opts, varargin) ;
+  opts.method = 'avg' ;
+  [opts, dzdy] = vl_argparsepos(opts, varargin) ;
 
-if nargin <= 1 || isempty(dzdy)
+  if nargin <= 1 || isempty(dzdy)
     switch opts.method
-        case 'avg'
-            y = mean(mean(x, 1), 2) ;
-        case 'max'
-            y = max(max(x, [], 1), [], 2) ;
-        otherwise
-            error(sprintf('Pooling method %s not recognized', opts.method)) ;            
+      case 'avg', y = mean(mean(x, 1), 2) ;
+      case 'max', y = max(max(x, [], 1), [], 2) ;
+      otherwise, error('Pooling method %s not recognized', opts.method) ;            
     end
-else
+  else
     base = 1 / (size(x,1) * size(x,2)) * ones(size(x), 'like', x) ;
-    y = bsxfun(@times, base, dzdy) ;
-end
+    y = bsxfun(@times, base, dzdy{1}) ;
+  end

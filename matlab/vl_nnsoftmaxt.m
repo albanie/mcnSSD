@@ -22,23 +22,12 @@ function Y = vl_nnsoftmaxt(x, varargin)
 % Copyright (C) 2017 Samuel Albanie 
 % All rights reserved.
 
-% NOTE: This is approach to parsing dzdy from varargin works
-% without autonn, but is less readable.  Will be updated to 
-% use vl_argparsepos when it is included in the main library
-if ~isempty(varargin) && ~ischar(varargin{1})  % passed in dzdy
-  dzdy = varargin{1} ; varargin(1) = [] ;
-else
-  dzdy = [] ;
-end
+  opts.dim = 1 ;
+  opts = vl_argparsepos(opts, varargin) ;
 
-opts.dim = 1 ;
-opts = vl_argparsepos(opts, varargin) ;
+  E = exp(bsxfun(@minus, x, max(x, [], opts.dim))) ;
+  L = sum(E, opts.dim) ;
+  Y = bsxfun(@rdivide, E, L) ;
+  if isempty(dzdy) ; return ; end
 
-E = exp(bsxfun(@minus, x, max(x, [], opts.dim))) ;
-L = sum(E, opts.dim) ;
-Y = bsxfun(@rdivide, E, L) ;
-
-if isempty(dzdy) ; return ; end
-
-% backward
-Y = Y .* bsxfun(@minus, dzdY, sum(dzdY .* Y, opts.dim)) ;
+  Y = Y .* bsxfun(@minus, dzdY, sum(dzdY .* Y, opts.dim)) ; % backward
