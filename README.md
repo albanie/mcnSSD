@@ -99,6 +99,7 @@ models will be downloaded automatically upon running the
 
 * `matconvnet (tested with v1.0-beta23, v1.0-beta24)`
 * `MATLAB (tested with 2016a)` 
+* [autonn](https://github.com/vlfeat/autonn)
 
 `additional GPU-mode dependency`:
 
