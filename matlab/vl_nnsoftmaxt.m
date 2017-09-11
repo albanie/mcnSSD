@@ -23,11 +23,11 @@ function Y = vl_nnsoftmaxt(x, varargin)
 % All rights reserved.
 
   opts.dim = 1 ;
-  opts = vl_argparsepos(opts, varargin) ;
+  [opts,dzdy] = vl_argparsepos(opts, varargin) ;
 
   E = exp(bsxfun(@minus, x, max(x, [], opts.dim))) ;
   L = sum(E, opts.dim) ;
   Y = bsxfun(@rdivide, E, L) ;
   if isempty(dzdy) ; return ; end
 
-  Y = Y .* bsxfun(@minus, dzdY, sum(dzdY .* Y, opts.dim)) ; % backward
+  Y = Y .* bsxfun(@minus, dzdy{1}, sum(dzdy{1} .* Y, opts.dim)) ; % backward
