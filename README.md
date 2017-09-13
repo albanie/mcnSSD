@@ -58,7 +58,18 @@ The pre-trained `ssd-pascal-vggvd-300` model runs at approximately
 
 ### Dependencies
 
-This module requires the following two modules:
+`CPU-mode`:
+
+* `matconvnet (tested with v1.0-beta23, v1.0-beta24)`
+* `MATLAB (tested with 2016a)` 
+
+
+`additional GPU-mode dependency`:
+
+* `CUDA (tested with v7.5, v8)`
+
+
+`mcnSSD` also requires the following two modules:
 
 * [autonn](https://github.com/vlfeat/autonn) - automatic differenation
 * [mcnExtraLayers](https://github.com/albanie/mcnExtraLayers) - extra MatConvNet layers
@@ -78,8 +89,6 @@ vl_contrib('compile', 'mcnSSD') ;
 vl_contrib('setup', 'mcnSSD') ;
 vl_contrib('test', 'mcnSSD') ; % optional
 ```
-
-
 
 
 ### Demo
@@ -102,15 +111,10 @@ downloaded directly from
 models will be downloaded automatically upon running the 
 `core/ssd_pretrained_benchmarks.m` script).
 
-
-### Dependencies
-
-`CPU-mode`:
-
-* `matconvnet (tested with v1.0-beta23, v1.0-beta24)`
-* `MATLAB (tested with 2016a)` 
+Undefined function or variable 'vl_argparsepos'
 
 
-`additional GPU-mode dependency`:
+### FAQ
 
-* `CUDA (tested with v7.5, v8)`
+1. If you get the following error:  `Undefined function or variable 'vl_argparsepos'`, it indicates that autonn is not on your path.  It can be added by running `vl_contrib install autonn ; vl_contrib setup autonn ;` from the root of your MatConvNet install.
+
