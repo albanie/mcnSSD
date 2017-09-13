@@ -229,6 +229,8 @@ if numel(opts.gpus) <= 1
 else
     predictions = zeros(200, 6, 1, numel(testIdx), 'single') ; 
     spmd
+       % resolve parallel path issue
+       addpath(fullfile(vl_rootnn, 'contrib/mcnSSD/matlab/mex')) ; 
        state = processDetections(net, imdb, testIdx, opts) ;
     end
     for i = 1:numel(opts.gpus)
@@ -256,9 +258,7 @@ predVar = outVars{1} ;
 predIdx = net.getVarIndex(opts.modelOpts.predVar) ;
 net.vars(predIdx).precious = true ;
 
-if ~isempty(opts.gpus)
-    net.move('gpu') ;
-end
+if ~isempty(opts.gpus), net.move('gpu') ; end
 
 % pre-compute the indices of the predictions made by each worker
 startIdx = labindex:numlabs:opts.batchOpts.batchSize ;
