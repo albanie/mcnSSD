@@ -10,14 +10,11 @@ classdef Flatten < dagnn.Layer
 
   methods
     function outputs = forward(obj, inputs, params)
-      outputs{1} = vl_nnflatten(inputs{1}, obj.axis, []) ;
-      %outputSizes = obj.getOutputSizes({size(inputs{1})}) ;
-      %outputs{1} = reshape(inputs{1}, outputSizes{1}) ;
+      outputs{1} = vl_nnflatten(inputs{1}, obj.axis) ;
     end
 
     function [derInputs, derParams] = backward(obj, inputs, params, derOutputs)
       derInputs{1} = vl_nnflatten(inputs{1}, obj.axis, derOutputs{1}) ;
-      %derInputs{1} = reshape(derOutputs{1}, size(inputs{1})) ;
       derParams = {} ;
     end
 
