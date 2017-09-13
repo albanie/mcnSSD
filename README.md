@@ -56,6 +56,14 @@ mean           77.54                77.75
 The pre-trained `ssd-pascal-vggvd-300` model runs at approximately 
 58 Hz on a Tesla M-40.
 
+### Dependencies
+
+This module requires the following two modules:
+
+* [autonn](https://github.com/vlfeat/autonn) - automatic differenation
+* [mcnExtraLayers](https://github.com/albanie/mcnExtraLayers) - extra MatConvNet layers
+
+Both of these can be setup directly with `vl_contrib` (i.e. run `vl_contrib install <module-name>` then `vl_contrib setup <module-name>`).
 
 ### Installation
 
@@ -71,7 +79,7 @@ vl_contrib('setup', 'mcnSSD') ;
 vl_contrib('test', 'mcnSSD') ; % optional
 ```
 
-The module also requires *autonn*, which can similarly be installed with `vl_contrib` (instructions [here](https://github.com/vlfeat/autonn)).
+
 
 
 ### Demo
