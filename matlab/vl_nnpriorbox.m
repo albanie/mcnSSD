@@ -93,6 +93,13 @@ boxesPerPosition = numAspectRatios + boolean(opts.maxSize) ;
 numBoxes = layerWidth * layerHeight * boxesPerPosition ; 
 boxes = zeros(numBoxes * 4, 1) ;
 
+% maintain compatibility
+if opts.pixelStep == 0
+  opts.pixelStep = imgWidth / layerWidth ;
+  heightStep = imgHeight / layerHeight ;
+  assert(opts.pixelStep == heightStep, 'non-square input not supported using `old-style` caffe syntax') ;
+end
+
 idx = 1 ;
 for i = 1:layerHeight
     for j = 1:layerWidth
