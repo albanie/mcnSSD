@@ -51,6 +51,17 @@ mean           77.54                77.75
 -------------- -------------------- ------------------------
 ```
 
+### Pre-trained models
+
+The public `caffe` models released by Wei Liu have been imported into 
+`matconvnet` for use.  The MobileNet model released by [chuanqi305](https://github.com/chuanqi305/MobileNet-SSD)
+has also been imported. In addition, some sample models trained with the 
+matconvnet implementation have been made available. These can be 
+downloaded directly from 
+[here](http://www.robots.ox.ac.uk/~albanie/models.html#ssd) (a few pre-trained 
+models will be downloaded automatically upon running the 
+`core/ssd_pretrained_benchmarks.m` script). 
+
 ### Speed
 
 The pre-trained `ssd-pascal-vggvd-300` model runs at approximately 
@@ -100,18 +111,6 @@ set.
 
 An example of model training can be found in `pascal/ssd_pascal_train.m`
 
-
-### Pre-trained models
-
-The public `caffe` models released by Wei Liu have been imported into 
-`matconvnet` for use.  In addition, some sample models trained with the 
-matconvnet implementation have been made available. These can be 
-downloaded directly from 
-[here](http://www.robots.ox.ac.uk/~albanie/models.html#ssd) (a few pre-trained 
-models will be downloaded automatically upon running the 
-`core/ssd_pretrained_benchmarks.m` script).
-
-Undefined function or variable 'vl_argparsepos'
 
 
 ### FAQ
