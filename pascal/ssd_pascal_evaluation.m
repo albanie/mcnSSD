@@ -2,9 +2,16 @@ function ssd_pascal_evaluation(varargin)
 %SSD_PASCAL_EVALUATION evaluate SSD detector on pascal VOC
 
 opts.net = [] ;
-opts.gpus = 1 ;
+opts.gpus = 2 ;
 opts.evalVersion = 'fast' ;
 opts.modelName = 'ssd-pascal-vggvd-300' ;
+
+% configure batch opts
+opts.batchOpts.batchSize = 8 ;
+opts.batchOpts.numThreads = 4 ;
+opts.batchOpts.use_vl_imreadjpeg = true ; 
+opts.batchOpts.scaleInputs = 0.007843 ;
+opts.batchOpts.imMean = [123, 117, 104] ;
 opts = vl_argparse(opts, varargin) ;
 
 % load network
@@ -19,21 +26,18 @@ opts.testset = 'test' ;
 opts.prefetch = true ;
 opts.fixedSizeInputs = false ;
 
-% configure batch opts
-batchOpts.batchSize = 8 ;
-batchOpts.numThreads = 4 ;
-batchOpts.use_vl_imreadjpeg = true ; 
-batchOpts.imageSize = net.meta.normalization.imageSize ;
-
 % cache configuration 
 cacheOpts.refreshPredictionCache = false ;
 cacheOpts.refreshDecodedPredCache = false ;
-cacheOpts.refreshEvaluationCache = false ;
-cacheOpts.refreshFigures = false ;
+cacheOpts.refreshEvaluationCache = true ;
+cacheOpts.refreshFigures = true ;
 
 % configure model options
 modelOpts.predVar = 'detection_out' ;
 modelOpts.get_eval_batch = @ssd_eval_get_batch ;
+
+% batch options
+opts.batchOpts.imageSize = net.meta.normalization.imageSize ;
 
 % configure dataset options
 dataOpts.name = 'pascal' ;
@@ -68,11 +72,9 @@ cacheOpts.evalCacheDir = evalCacheDir ;
 % configure meta options
 opts.dataOpts = dataOpts ;
 opts.modelOpts = modelOpts ;
-opts.batchOpts = batchOpts ;
 opts.cacheOpts = cacheOpts ;
 
 ssd_evaluation(expDir, net, opts) ;
-
 
 % ------------------------------------------------------------------
 function aps = pascal_eval_func(modelName, decodedPreds, imdb, opts)
@@ -90,7 +92,7 @@ for c = 1:numClasses
                        opts.dataOpts.VOCopts, ...
                        'evalVersion', opts.dataOpts.evalVersion) ;
     fprintf('%s %.1\n', className, 100 * results.ap) ;
-    aps(c) = results.ap ;
+    aps(c) = results.ap_auc ;
 end
 save(opts.cacheOpts.resultsCache, 'aps') ;
 
@@ -155,4 +157,3 @@ fprintf('\n============\n') ;
 fprintf(sprintf('%s set performance of %s:', opts.testset, modelName)) ;
 fprintf('%.1f (mean ap) \n', 100 * mean(aps)) ;
 fprintf('\n============\n') ;
-printPascalResults(opts.cacheOpts.evalCacheDir, 'orientation', 'portrait') ;

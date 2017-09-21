@@ -266,7 +266,8 @@ idx = arrayfun(@(x) {x:opts.batchOpts.batchSize:numel(testIdx)}, startIdx) ;
 computedIdx = sort(horzcat(idx{:})) ;
 
 % top 200 preds kept
-state.predictions = zeros(200, 6, 1, numel(computedIdx), 'single') ; 
+keepTopK = net.layers(net.getLayerIndex('detection_out')).block.keepTopK ;
+state.predictions = zeros(keepTopK, 6, 1, numel(computedIdx), 'single') ; 
 state.computedIdx = computedIdx ;
 offset = 1 ;
 

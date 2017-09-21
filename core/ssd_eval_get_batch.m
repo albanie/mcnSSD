@@ -3,7 +3,7 @@ function batchData = ssd_eval_get_batch(imdb, batch, opts, varargin)
 bopts.prefetch = false ;
 bopts = vl_argparse(bopts, varargin) ;
 
-imMean = [123, 117, 104] ; 
+imMean = opts.batchOpts.imMean ;
 useGpu = numel(opts.gpus) > 0 ;
 imNames = imdb.images.name(batch) ;
 imPathTemplates = imdb.images.paths(batch) ;
@@ -32,6 +32,9 @@ if opts.batchOpts.use_vl_imreadjpeg
     else
         out = vl_imreadjpeg(args{:}) ;
         data = out{1} ; 
+    end
+    if opts.batchOpts.scaleInputs
+      data = data * opts.batchOpts.scaleInputs ;
     end
 else
     data = single(zeros([opts.batchOpts.imageSize(1:2) 3 numel(batch)])) ;

@@ -1,6 +1,7 @@
 % This script evaluates the pre-trained models released by the 
 % mastermind behind the SSD detector, Wei Liu, as well as some models
-% trained with the matconvnet implementation
+% trained with the matconvnet implementation.  It also evaluates the 
+% mobilenet detector released by chuanqi305 on GitHub.
 %
 % Some notes about the pretrained models/Pascal VOC evaluation
 % -------------------------------------------------------------
@@ -22,6 +23,7 @@
 evalVersion = 'fast' ;
 
 models = {...
+    'ssd-pascal-mobilenet-ft', ...
     'ssd-pascal-vggvd-300', ...
     'ssd-pascal-vggvd-512', ...
     'ssd-pascal-vggvd-ft-300', ...
@@ -31,8 +33,16 @@ models = {...
 } ;
 
 for i = 1:numel(models)
-    model = models{i} ;
+    model = models{i} ; args = {} ;
+
+    % The MobileNet detector requires different input preprocessing
+    if contains(model, 'mobilenet')
+      args = {'batchOpts', ...
+              struct('imMean', [127.5 127.5 127.5], ...
+              'scaleInputs', 0.007843)} ;
+    end
+
     ssd_pascal_evaluation('modelName', model, ...
-                          'evalVersion', evalVersion) ;
+                          'evalVersion', evalVersion, args{:}) ;
 end
 
