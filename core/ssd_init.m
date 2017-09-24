@@ -400,7 +400,7 @@ function [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts)
 % aspect ratios)
 
 numBBoxOffsets = 4 ;
-priorsPerFeature = 1 + boolean(maxSize) + numel(aspectRatios) * 2 ;
+priorsPerFeature = 1 + logical(maxSize) + numel(aspectRatios) * 2 ;
 confOut = opts.modelOpts.numClasses *  priorsPerFeature ;
 locOut = numBBoxOffsets *  priorsPerFeature ;
 
@@ -474,20 +474,20 @@ function net = addMultiBoxLayers(net, prefix, prevLayerName, minSize, ...
 %   ARGUMENTS:
 %       `net`: dagnn.DagNN net object under construction
 %       `prefix`: (string) name used to prefix each layer name in unit
-%       `prevLayerName`: (string) name of input feature layer 
-%       `minSize`: (float) minimum size of prior boxes 
-%       `maxSize`: (float) maximum size of prior boxes 
-%       `aspectRatios`: (float) array of aspect ratios used for prior boxes 
-%       `flip`: (boolean) add flipped versions of each aspect ratio
-%       `clip`: (boolean) clip prior boxes to lie inside feature map
-%       `step`: (int) number of pixel steps taken in image to match a pixel 
+%       `prevLayerName`: (string) name of input feature layer
+%       `minSize`: (float) minimum size of prior boxes
+%       `maxSize`: (float) maximum size of prior boxes
+%       `aspectRatios`: (float) array of aspect ratios used for prior boxes
+%       `flip`: (logical) add flipped versions of each aspect ratio
+%       `clip`: (logical) clip prior boxes to lie inside feature map
+%       `step`: (int) number of pixel steps taken in image to match a pixel
 %               step in the feature map
 %       `offset`: (float) offset applied to centre each feature location
 %       `variances`: (4x1 array) variances used to scale prior boxes
 %       `channelsIn`: (int) number of channels in the input layer
 %       `confOut`: (int) number of filters used to predict class confidences
 %       `locOut`: (int) number of filters used to predict box location updates
-%       `usePriorCaching`: (boolean) cache the prior boxes and re-use after 
+%       `usePriorCaching`: (logical) cache the prior boxes and re-use after
 %                          the first pass
 
 % store the layer on which the multibox layers will be based

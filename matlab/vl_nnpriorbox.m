@@ -89,7 +89,7 @@ end
 numAspectRatios = 1 + numel(aspectRatios) ;
 
 % An additional box is generated if the maxSize property is specified
-boxesPerPosition = numAspectRatios + boolean(opts.maxSize) ;
+boxesPerPosition = numAspectRatios + logical(opts.maxSize) ;
 numBoxes = layerWidth * layerHeight * boxesPerPosition ; 
 boxes = zeros(numBoxes * 4, 1) ;
 

@@ -46,14 +46,14 @@ classdef PriorBox < dagnn.ElementWise
     
     function outputSizes = getOutputSizes(obj, inputSizes)
       numAspectRatios = 1 + (1 + obj.flip) * numel(obj.aspectRatios) ...
-                                + boolean(obj.maxSize) ;
+                                + logical(obj.maxSize) ;
       numBoxes = numAspectRatios * inputSizes{1}(2) * inputSizes{1}(1) ;
       outputSizes{1} = [numBoxes 2 2 inputSizes{1}(4)] ;
     end
-    
+
     function rfs = getReceptiveFields(obj)
     end
-    
+
     function load(obj, varargin)
       s = dagnn.Layer.argsToStruct(varargin{:}) ;
       load@dagnn.Layer(obj, s) ;
