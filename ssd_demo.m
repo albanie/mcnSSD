@@ -30,6 +30,7 @@ function ssd_demo(varargin)
   modelName = 'ssd-mcn-pascal-vggvd-300.mat' ;
   paths = {opts.modelPath, ...
            modelName, ...
+           fullfile(vl_rootnn, 'data/models', modelName), ...
            fullfile(vl_rootnn, 'data', 'models-import', modelName)} ;
   ok = find(cellfun(@(x) exist(x, 'file'), paths), 1) ;
 
@@ -56,30 +57,30 @@ function ssd_demo(varargin)
     gpuDevice(opts.gpu) ; net.move('gpu') ; im = gpuArray(im) ;
   end
 
-  % tell the network to store the outputs
+  % Tell the network to store the outputs
   % of the prediction layer and do a forward pass
   net.mode = 'test';
   net.vars(end).precious = true ;
   net.eval({'data', im}) ;
 
-  % gather the predictions from the network,
+  % Gather the predictions from the network,
   % and sort by confidence
   preds = net.vars(end).value ;
 
-  % check the last 
+  % Check the last
   preds = preds(:,:,:,end) ;
   [~, sortedIdx ] = sort(preds(:, 2), 'descend') ;
   preds = preds(sortedIdx, :) ;
 
-  % extract the most confident prediction
+  % Extract the most confident prediction
   box = preds(1,3:end) ;
   confidence = preds(1,2) ;
   label = classes{preds(1,1)} ;
 
-  % return image to cpu for visualisation
+  % Return image to cpu for visualisation
   if numel(opts.gpu) > 0, im = gather(im) ; end
 
-  % diplay prediction as a sanity check
+  % Diplay prediction as a sanity check
   figure ; im = im / 255 ;
   x = box(1) * size(im, 2) ; y = box(2) * size(im, 1) ;
   width = box(3) * size(im, 2) - x ; height = box(4) * size(im, 1) - y ;
@@ -88,5 +89,5 @@ function ssd_demo(varargin)
   imagesc(im) ;
   title(sprintf('top SSD prediction: %s \n confidence: %f', label, confidence)) ;
 
-  % free up the GPU allocation
+  % Free up the GPU allocation
   if numel(opts.gpu) > 0, net.move('cpu') ; end
