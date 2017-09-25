@@ -33,7 +33,7 @@ if opts.batchOpts.use_vl_imreadjpeg
         out = vl_imreadjpeg(args{:}) ;
         data = out{1} ; 
     end
-    if opts.batchOpts.scaleInputs
+    if opts.batchOpts.scaleInputs 
       data = data * opts.batchOpts.scaleInputs ;
     end
 else

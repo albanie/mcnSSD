@@ -16,7 +16,7 @@ function fix_ssd_imports(varargin)
 
   % select model
   res = dir(fullfile(opts.modelDir, '*.mat')) ; modelNames = {res.name} ;
-  modelNames = modelNames(contains(modelNames, 'ssd-mcn-mobile')) ;
+  modelNames = modelNames(contains(modelNames, 'ssd-mscoco')) ;
 
   for mm = 1:numel(modelNames)
     modelPath = fullfile(opts.modelDir, modelNames{mm}) ;
@@ -73,7 +73,16 @@ function fix_ssd_imports(varargin)
     % fix meta 
     fprintf('adding info to %s (%d/%d)\n', modelPath, mm, numel(modelNames)) ;
     %net.meta.classes = imdb.classes ;
-    net.meta.normalization.imageSize = [300 300 3] ;
+    if contains(modelPath, '300')
+      net.meta.normalization.imageSize = [300 300 3] ;
+    elseif contains(modelPath, '512')
+      net.meta.normalization.imageSize = [512 512 3] ;
+    else
+      keyboard
+    end
+    if ~contains(modelNames, 'mcn')
+      net.meta.normalization.averageImage = [123 117 104] ; % caffe pretraining
+    end
     net = dagnn.DagNN.loadobj(net) ; 
     net = net.saveobj() ; save(modelPath, '-struct', 'net') ; %#ok
   end

@@ -1,354 +1,328 @@
-function ssd_evaluation(expDir, net, opts)
+function results = ssd_evaluation(expDir, net, opts)
+%SSD_EVALUATION - run SSD detector evaluation
+%  SSD_EVALUATION(EXPDIR, NET, OPTS) - evaluates the network NET
+%  on the imdb specified (as an option), and stores results in 
+%  EXPDIR.
+%
+% Copyright (C) 2017 Samuel Albanie 
+% All rights reserved.
 
-% ----------------------------------------------------------------
-%                                                     Prepare imdb
-% ----------------------------------------------------------------
-
-if exist(opts.dataOpts.imdbPath, 'file')
+  % load/create imdb and configure
+  if exist(opts.dataOpts.imdbPath, 'file')
     imdb = load(opts.dataOpts.imdbPath) ;
-else
+  else
     imdb = opts.dataOpts.getImdb(opts) ;
     imdbDir = fileparts(opts.dataOpts.imdbPath) ;
-    if ~exist(imdbDir, 'dir') 
-        mkdir(imdbDir) ;
-    end
+    if ~exist(imdbDir, 'dir'), mkdir(imdbDir) ; end
     save(opts.dataOpts.imdbPath, '-struct', 'imdb') ;
-end
+  end
+  [opts, imdb] = opts.dataOpts.configureImdbOpts(expDir, opts, imdb) ;
 
-opts = opts.dataOpts.configureImdbOpts(expDir, opts) ;
+  switch opts.testset
+    case 'train', setLabel = 1 ;
+    case 'val', setLabel = 2 ;
+    case 'test', setLabel = 3 ;
+    case 'test-dev', setLabel = 4 ;
+  end
+  testIdx = find(imdb.images.set == setLabel) ;
+  % retrieve results from cache if possible
+  results = checkCache(opts, net, imdb, testIdx) ;
+  opts.dataOpts.displayResults(opts.modelName, results, opts) ;
 
-switch opts.testset
-    case 'val'
-        setLabel = 2 ;
-    case 'test'
-        setLabel = 3 ;
-end
-
-testIdx = find(imdb.images.set == setLabel) ;
-
-% ----------------------------------------------------------------
-%                                 Retrieve from caches if possible
-% ----------------------------------------------------------------
-
-rawPreds = checkCache('rawPreds', opts, net, imdb, testIdx) ;
-decoded = checkCache('decodedPreds', opts, rawPreds, imdb, testIdx) ;
-results = checkCache('results', opts, opts.modelName, decoded, imdb) ;
-
-opts.dataOpts.displayResults(opts.modelName, results, opts) ;
-
-% ------------------------------------------------
-function res = checkCache(varname, opts, varargin)
-% ------------------------------------------------
-
-switch varname
-    case 'rawPreds'
-        path = opts.cacheOpts.rawPredsCache ;
-        flag = opts.cacheOpts.refreshPredictionCache ;
-        func = @computePredictions ;
-    case 'decodedPreds'
-        path = opts.cacheOpts.decodedPredsCache ;
-        flag =  opts.cacheOpts.refreshDecodedPredCache ;
-        func = @decodePredictions ;
-    case 'results'
-        path = opts.cacheOpts.resultsCache ;
-        flag =  opts.cacheOpts.refreshEvaluationCache ;
-        func = opts.dataOpts.eval_func ;
-end
-
-if exist(path, 'file') && ~flag
-    fprintf('loading %s from cache\n', varname) ;
-    tmp = load(path) ;
-    res = tmp.(varname) ;
-else
-    s.(varname) = func(varargin{:}, opts) ;
+% -------------------------------------------------
+function res = checkCache(opts, net, imdb, testIdx)
+% -------------------------------------------------
+  path = opts.cacheOpts.resultsCache ;
+  if exist(path, 'file') && ~opts.cacheOpts.refreshCache
+    fprintf('loading results from cache\n') ;
+    tmp = load(path) ; res = tmp.results ;
+  else
+    if opts.multiscale
+      predictions = computePredictionsMultiscale(net, imdb, testIdx, opts) ;
+    else
+      predictions = computePredictions(net, imdb, testIdx, opts) ;
+    end
+    decodedPreds = decodePredictions(predictions, imdb, testIdx, opts) ;
+    s.results = opts.dataOpts.eval_func(opts.modelName, decodedPreds, imdb, opts) ;
+    fprintf('saving results to %s\n', path);
     save(path, '-struct', 's', '-v7.3') ;
-    res = s.(varname) ;
-end
+    res = s.results ;
+  end
 
 % -------------------------------------------------------------------------
 function decodedPreds = decodePredictions(predictions, imdb, testIdx, opts) 
 % -------------------------------------------------------------------------
-% For small datasets (e.g. just a few thousand frames), serial 
-% decoding tends to be faster
-
-switch opts.dataOpts.decoder
-    case 'serial' 
-        decodedPreds = decodeSerial(predictions, imdb, testIdx, opts) ;
-    case 'parallel'
-        decodedPreds = decodeParallel(predictions, imdb, testIdx, opts) ;
-    otherwise
-        error('deocoder %s not recognised (should be serial or parallel)', ...
-                                                    opts.dataOpts.deocoder) ;
-end
+  args = {predictions, imdb, testIdx, opts} ;
+  switch opts.dataOpts.decoder % For small datasets serial tends to be faster
+    case 'serial', decodedPreds = decodeSerial(args{:}) ;
+    case 'parallel', decodedPreds = decodeParallel(args{:}) ;
+    otherwise, error('deocoder %s not recognised',opts.dataOpts.deocoder) ;
+  end
 
 % -------------------------------------------------------------------------
 function decodedPreds = decodeSerial(predictions, imdb, testIdx, opts) 
 % -------------------------------------------------------------------------
+  numClasses = numel(imdb.meta.classes) ; 
+  % gather predictions by class, and store the corresponding 
+  % image id (i.e. image name) and bouding boxes
+  imageIds = cell(1, numClasses) ;
+  scores = cell(1, numClasses) ;
+  bboxes = cell(1, numClasses) ;
 
-numClasses = numel(imdb.meta.classes) ; 
+  for c = 1:numClasses
+      fprintf('extracting predictions for %s\n', imdb.meta.classes{c}) ;
+      for p = 1:numel(testIdx)
+          target = c + 1 ; % add offset for bg class (compatibility with caffe)
+          % find predictions for current image
+          preds = predictions(:,:,:,p) ; targetIdx = find(preds(:,1) == target) ; 
+          pScores = preds(targetIdx, 2) ; pBoxes = preds(targetIdx, 3:end) ;
 
-% gather predictions by class, and store the corresponding 
-% image id (i.e. image name) and bouding boxes
-imageIds = cell(1, numClasses) ;
-scores = cell(1, numClasses) ;
-bboxes = cell(1, numClasses) ;
-
-for c = 1:numClasses
-    fprintf('extracting predictions for %s\n', imdb.meta.classes{c}) ;
-    for p = 1:numel(testIdx)
-
-        % add offset for background class (for compatibility with caffe)
-        target = c + 1 ;
-
-        % find predictions for current image
-        preds = predictions(:,:,:,p) ;
-        targetIdx = find(preds(:,1) == target) ; 
-        pScores = preds(targetIdx, 2) ;
-        pBoxes = preds(targetIdx, 3:end) ;
-
-        % clip predictions to fall in image and scale the 
-        % bounding boxes from [0,1] to absolute pixel values
-        if pBoxes
-            pBoxes = min(max(pBoxes, 0), 1) ;
-            imsz = single(imdb.images.imageSizes{testIdx(p)}) ;
-
-            switch opts.dataOpts.resultsFormat
-                case 'minMax'
-                    pBoxes = [pBoxes(:,1) * imsz(2) ...
-                              pBoxes(:,2) * imsz(1) ...
-                              pBoxes(:,3) * imsz(2) ...
-                              pBoxes(:,4) * imsz(1) ] ;
-                case 'minWH'
-                    pBoxes = [pBoxes(:,1) * imsz(2) ...
-                              pBoxes(:,2) * imsz(1) ...
-                              (pBoxes(:,3) - pBoxes(:,1)) * imsz(2) ...
-                              (pBoxes(:,4) - pBoxes(:,2)) * imsz(1) ] ;
-            end
-
-            % store results
-            pId = imdb.images.name{testIdx(p)} ;
-            scores{c} = vertcat(scores{c}, pScores) ;
-            bboxes{c} = vertcat(bboxes{c}, pBoxes) ;
-            imageIds{c} = vertcat(imageIds{c}, repmat({pId}, size(pScores))) ; 
+          % clip predictions to fall in image and scale the 
+          % bounding boxes from [0,1] to absolute pixel values
+          if pBoxes
+              pBoxes = min(max(pBoxes, 0), 1) ;
+              imsz = single(imdb.images.imageSizes{testIdx(p)}) ;
+              switch opts.dataOpts.resultsFormat
+                  case 'minMax'
+                      pBoxes = [pBoxes(:,1) * imsz(2) ...
+                                pBoxes(:,2) * imsz(1) ...
+                                pBoxes(:,3) * imsz(2) ...
+                                pBoxes(:,4) * imsz(1) ] ;
+                  case 'minWH'
+                      pBoxes = [pBoxes(:,1) * imsz(2) ...
+                                pBoxes(:,2) * imsz(1) ...
+                                (pBoxes(:,3) - pBoxes(:,1)) * imsz(2) ...
+                                (pBoxes(:,4) - pBoxes(:,2)) * imsz(1) ] ;
+              end
+              pId = imdb.images.name{testIdx(p)} ; % store results
+              scores{c} = vertcat(scores{c}, pScores) ;
+              bboxes{c} = vertcat(bboxes{c}, pBoxes) ;
+              imageIds{c} = vertcat(imageIds{c}, repmat({pId}, size(pScores))) ; 
+          end
+        if mod(p,100) == 1 
+          fprintf('extracting preds for image %d/%d\n', p, numel(testIdx)) ;
         end
-        fprintf('extracting predictions for image %d/%d\n', p, numel(testIdx)) ;
-    end
-end
+      end
+  end
+  decodedPreds.imageIds = imageIds ; 
+  decodedPreds.scores = scores ;
+  decodedPreds.bboxes = bboxes ;
 
-decodedPreds.imageIds = imageIds ;
-decodedPreds.scores = scores ;
-decodedPreds.bboxes = bboxes ;
 
 % -------------------------------------------------------------------------
 function decodedPreds = decodeParallel(predictions, imdb, testIdx, opts) 
 % -------------------------------------------------------------------------
+  numClasses = numel(imdb.meta.classes) -1 ; 
 
-numClasses = numel(imdb.meta.classes) ; 
-% gather predictions by class, and store the corresponding 
-% image id (i.e. image name) and bouding boxes
-imageIds = cell(1, numClasses) ;
-scores = cell(1, numClasses) ;
-bboxes = cell(1, numClasses) ;
+  % gather predictions by class, and store the corresponding 
+  % image id (i.e. image name) and bouding boxes
+  imageIds = cell(1, numClasses) ;
+  scores = cell(1, numClasses) ;
+  bboxes = cell(1, numClasses) ;
 
-% Use preallocation to enable parallel evaluation
-predsPerIm = uint32(size(predictions, 1)) ;
-numTotal = double(predsPerIm) * numel(testIdx) ;
+  switch opts.dataOpts.name
+    case 'pascal'
+      % Use preallocation to enable parallel evaluation
+      predsPerIm = uint32(size(predictions, 1)) ;
+      numTotal = double(predsPerIm) * numel(testIdx) ;
+      for c = 1:numClasses
+        target = c + 1 ; % add offset for bg class (compatibility with caffe)
+        fprintf('extracting preds for %s (%d/%d)\n', ...
+                                imdb.meta.classes{target}, c, numClasses) ;
+        cBoxes = zeros(numTotal, 4, 'single') ; cImageIds = cell(numTotal, 1) ;
+        cScores = zeros(numTotal, 1, 'single') ; keep = false(numTotal, 1) ;
 
-for c = 1:numClasses
-    fprintf('extracting predictions for %s\n', opts.dataOpts.classes{c}) ;
-
-    % add offset for background class (for compatibility with caffe)
-    target = c + 1 ;
-
-    cBoxes = zeros(numTotal, 4, 'single') ;
-    cScores = zeros(numTotal, 1, 'single') ;
-    cImageIds = cell(numTotal, 1) ;
-    keep = false(numTotal, 1) ;
-
-    parfor p = 1:numTotal
-
-        offset = mod(p - 1, predsPerIm) + 1 ; 
-        imId = idivide(p - 1, predsPerIm) + 1 ;
-
-        preds = predictions(offset,:,:,imId) ;
-        keep(p) = (preds(1) == target) ; 
-        if ~keep(p)
-            continue
-        else
+        parfor p = 1:numTotal
+          % temp assignments to avoid broadcasting overhead in parfor
+          predictions_ = predictions ; imdb_ = imdb ; opts_ = opts ;
+          testIdx_ = testIdx ;
+          scoreThresh = opts_.dataOpts.scoreThresh ;
+          offset = mod(p - 1, predsPerIm) + 1 ; 
+          imId = idivide(p - 1, predsPerIm) + 1 ;
+          preds = predictions_(offset,:,:,imId) ;
+          keep(p) = (preds(1) == target) ; 
+          if ~keep(p)
+              continue
+          else
             pScore = preds(2) ;
-            if pScore < opts.dataOpts.scoreThresh
-                keep(p) = false ;
-                continue 
-            end
+            if pScore < scoreThresh, keep(p) = false ; continue ; end
 
             pBox = preds(3:end) ;
             % clip predictions to fall in image and scale the 
             % bounding boxes from [0,1] to absolute pixel values
             pBox = min(max(pBox, 0), 1) ;
-            imsz = single(imdb.images.imageSizes{testIdx(p)}) ;
-
+            imsz = single(imdb_.images.imageSizes{testIdx_(imId)}) ;
+            minX = pBox(1)*imsz(2) ; minY = pBox(2)*imsz(1) ;
             switch opts.dataOpts.resultsFormat
-                case 'minMax'
-                    pBox = [pBox(1) * imsz(2) ...
-                            pBox(2) * imsz(1) ...
-                            pBox(3) * imsz(2) ...
-                            pBox(4) * imsz(1) ] ;
-                case 'minWH'
-                    pBox = [pBox(1) * imsz(2) ...
-                            pBox(2) * imsz(1) ...
-                            (pBox(3) - pBox(1)) * imsz(2) ...
-                            (pBox(4) - pBox(2)) * imsz(1) ] ;
+              case 'minMax'
+                maxX = pBox(3)*imsz(2) ; maxY = pBox(4)*imsz(1) ;
+                pBox = [ minX minY maxX maxY] ;
+              case 'minWH'
+                W = (pBox(3) - pBox(1))*imsz(2) ; H = (pBox(4) - pBox(2))*imsz(1)  ;
+                pBox = [ minX minY W H] ;
             end
-
             % store results
-            cScores(p) = pScore ;
-            cBoxes(p,:) = pBox ;
-            cImageIds{p} = imdb.images.name{testIdx(imId)} ; 
+            cScores(p) = pScore ; cBoxes(p,:) = pBox ;
+            cImageIds{p} = imdb_.images.name{testIdx_(imId)} ; 
+          end
         end
-        fprintf('extracting prediction %d/%d for %s\n', p, numTotal, ...
-                                                  opts.dataOpts.classes{c}) ;
-    end
-    scores{c} = cScores(find(keep)) ;
-    bboxes{c} = cBoxes(find(keep),:) ;
-    imageIds{c} = cImageIds(find(keep)) ; 
-end
+        scores{c} = cScores(keep) ;
+        bboxes{c} = cBoxes(keep,:) ;
+        imageIds{c} = cImageIds(keep) ; 
+      end
+    case 'coco'
+      % to enable parallel processing on coco, the predictions are flattened
+      pSize = size(predictions) ;
+      imIds = arrayfun(@(x) {repmat(x, pSize(1), 1)}, imdb.images.id(testIdx)) ;
+      preds = reshape(permute(predictions, [1 4 3 2]), [], pSize(2), 1) ;
+      imSizes = vertcat(imdb.images.imageSizes{testIdx}) ; 
+      imsz = arrayfun(@(x) {repmat(imSizes(x,[2 1]),pSize(1),2)},1:numel(testIdx)) ;
+      imIds = vertcat(imIds{:}) ; imsz = vertcat(imsz{:}) ;
+      pBox = preds(:,end-3:end) ; pBox = min(max(pBox, 0), 1) ;
+      switch opts.dataOpts.resultsFormat
+          case 'minMax'
+            pBox = bsxfun(@times, pBox, imsz) ;
+          case 'minWH'
+            pBox = bsxfun(@times, [pBox(:,1:2) pBox(:,3:4) - pBox(:,1:2)], imsz) ;
+      end
+      pBox = round(pBox, 2) ; % reduce storage requirements
+      preds(:,end-3:end) = pBox ; preds = [imIds preds] ;
+      parfor c = 1:numClasses
+        imdb_ = imdb ; preds_ = preds ; % avoid parfor broadcast indexing
+        target = c + 1 ; % add offset for background class
+        template = 'extracting predictions for %s (%d/%d)\n' ;
+        fprintf(template, imdb_.meta.classes{target}, c, numClasses) ;
+        keep = find(preds_(:,2) == target) ;
+        imageIds{c} = preds_(keep,1) ; scores{c} = preds_(keep,end-4) ;
+        bboxes{c} = preds_(keep,end-3:end) ;
+      end
+    otherwise, error('dataset %s not recognised\n', opts.dataOpts.name) ;
+  end
+  decodedPreds.imageIds = imageIds ;
+  decodedPreds.scores = scores ;
+  decodedPreds.bboxes = bboxes ;
 
-decodedPreds.imageIds = imageIds ;
-decodedPreds.scores = scores ;
-decodedPreds.bboxes = bboxes ;
+% ----------------------------------------------------------------------------
+function predictions = computePredictionsMultiscale(net, imdb, testIdx, opts) 
+% ----------------------------------------------------------------------------
+prepareGPUs(opts, true) ; params.testIdx = testIdx ;
+predictions = cell(1, numel(opts.msOpts.scales)) ;
+for ii = 1:numel(opts.msOpts.scales) % need to do this for each scale
+  scale = opts.msOpts.scales(ii) ; 
+  % select net - original SSD is stored first, otherwise use modified net
+  if scale == 1, net_ = net{1} ; else, net_ = net{2} ; end
+  params.predIdx = net_.getVarIndex('detection_out') ;
+  state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
+  predictions{ii} = state.predictions ;
+end
+predictions = mergeMultiscalePredictions(predictions, imdb, opts) ;
 
 % ------------------------------------------------------------------
 function predictions = computePredictions(net, imdb, testIdx, opts) 
 % ------------------------------------------------------------------
-
-prepareGPUs(opts, true) ;
-
-if numel(opts.gpus) <= 1
-   state = processDetections(net, imdb, testIdx, opts) ;
-   predictions = state.predictions ;
-else
+  prepareGPUs(opts, true) ; params.testIdx = testIdx ;
+  params.predIdx = net.getVarIndex('detection_out') ;
+  if numel(opts.gpus) <= 1
+     state = processDetections(net, imdb, params, opts) ;
+     predictions = state.predictions ;
+  else
     predictions = zeros(200, 6, 1, numel(testIdx), 'single') ; 
+    addpath(fullfile(vl_rootnn, 'contrib/mcnSSD/matlab/mex')) ; % parallel path issue
     spmd
-       % resolve parallel path issue
-       addpath(fullfile(vl_rootnn, 'contrib/mcnSSD/matlab/mex')) ; 
-       state = processDetections(net, imdb, testIdx, opts) ;
+      state = processDetections(net, imdb, params, opts) ;
     end
     for i = 1:numel(opts.gpus)
-        state_ = state{i} ;
-        predictions(:,:,:,state_.computedIdx) = state_.predictions ;
+      state_ = state{i} ;
+      predictions(:,:,:,state_.computedIdx) = state_.predictions ;
     end
-end
+  end
 
-% ------------------------------------------------------------------
-function state = processDetections(net, imdb, testIdx, opts) 
-% ------------------------------------------------------------------
+% -------------------------------------------------------------------
+function state = processDetections(net, imdb, params, opts, varargin) 
+% -------------------------------------------------------------------
 
-% benchmark speed
-num = 0 ;
-adjustTime = 0 ;
-stats.time = 0 ;
-stats.num = num ; 
-start = tic ;
+  sopts.scale = [] ;
+  sopts = vl_argparse(sopts, varargin) ;
 
-% find the output predictions made by the network
-outVars = net.getOutputs() ;
-predVar = outVars{1} ;
+  % benchmark speed
+  num = 0 ; adjustTime = 0 ; stats.time = 0 ; stats.num = num ;  start = tic ;
+  testIdx = params.testIdx ;
+  if ~isempty(opts.gpus), net.move('gpu') ; end
 
-% prepare to store network predictions
-predIdx = net.getVarIndex(opts.modelOpts.predVar) ;
-net.vars(predIdx).precious = true ;
+  % pre-compute the indices of the predictions made by each worker
+  startIdx = labindex:numlabs:opts.batchOpts.batchSize ;
+  idx = arrayfun(@(x) {x:opts.batchOpts.batchSize:numel(testIdx)}, startIdx) ;
+  computedIdx = sort(horzcat(idx{:})) ; keepTopK = net.meta.keepTopK ;
+  state.predictions = zeros(keepTopK, 6, 1, numel(computedIdx), 'single') ; 
+  state.computedIdx = computedIdx ; offset = 1 ;
 
-if ~isempty(opts.gpus), net.move('gpu') ; end
-
-% pre-compute the indices of the predictions made by each worker
-startIdx = labindex:numlabs:opts.batchOpts.batchSize ;
-idx = arrayfun(@(x) {x:opts.batchOpts.batchSize:numel(testIdx)}, startIdx) ;
-computedIdx = sort(horzcat(idx{:})) ;
-
-% top 200 preds kept
-keepTopK = net.layers(net.getLayerIndex('detection_out')).block.keepTopK ;
-state.predictions = zeros(keepTopK, 6, 1, numel(computedIdx), 'single') ; 
-state.computedIdx = computedIdx ;
-offset = 1 ;
-
-for t = 1:opts.batchOpts.batchSize:numel(testIdx) 
-
+  for t = 1:opts.batchOpts.batchSize:numel(testIdx) 
     % display progress
     progress = fix((t-1) / opts.batchOpts.batchSize) + 1 ;
     totalBatches = ceil(numel(testIdx) / opts.batchOpts.batchSize) ;
     fprintf('evaluating batch %d / %d: ', progress, totalBatches) ;
-
     batchSize = min(opts.batchOpts.batchSize, numel(testIdx) - t + 1) ;
-
     batchStart = t + (labindex - 1) ;
     batchEnd = min(t + opts.batchOpts.batchSize - 1, numel(testIdx)) ;
     batch = testIdx(batchStart : numlabs : batchEnd) ;
     num = num + numel(batch) ;
     if numel(batch) == 0, continue ; end
-
-    inputs = opts.modelOpts.get_eval_batch(imdb, batch, opts) ;
+    args = {imdb, batch, opts} ;
+    if ~isempty(sopts.scale), args = [args, {sopts.scale}] ; end %#ok
+    inputs = opts.modelOpts.get_eval_batch(args{:}) ;
 
     if opts.prefetch
-        batchStart_ = t + (labindex - 1) + opts.batchOpts.batchSize ;
-        batchEnd_ = min(t + 2*opts.batchOpts.batchSize - 1, numel(testIdx)) ;
-        nextBatch = testIdx(batchStart_: numlabs : batchEnd_) ;
-        opts.modelOpts.get_eval_batch(imdb, nextBatch, opts, 'prefetch', true) ;
+      batchStart_ = t + (labindex - 1) + opts.batchOpts.batchSize ;
+      batchEnd_ = min(t + 2*opts.batchOpts.batchSize - 1, numel(testIdx)) ;
+      nextBatch = testIdx(batchStart_: numlabs : batchEnd_) ;
+      args = {imdb, nextBatch, opts} ;
+      if ~isempty(sopts.scale), args = [args, {sopts.scale}] ; end %#ok
+      opts.modelOpts.get_eval_batch(args{:}, 'prefetch', true) ;
     end
-
-    net.eval(inputs) ;
-    storeIdx = offset:offset + numel(batch) -1 ;
-    offset = offset + numel(batch) ;
-    state.predictions(:,:,:,storeIdx) = net.vars(predIdx).value ;
-
-    time = toc(start) + adjustTime ;
-    batchTime = time - stats.time ;
-    stats.num = num ;
-    stats.time = time ;
-    currentSpeed = batchSize / batchTime ;
+    net.eval(inputs, 'test') ;
+    storeIdx = offset:offset + numel(batch) - 1 ;offset = offset + numel(batch) ;
+    state.predictions(:,:,:,storeIdx) = net.vars{params.predIdx} ;
+    time = toc(start) + adjustTime ; batchTime = time - stats.time ;
+    stats.num = num ; stats.time = time ; currentSpeed = batchSize / batchTime ;
     averageSpeed = (t + batchSize - 1) / time ;
-
     if t == 3*opts.batchOpts.batchSize + 1
-        % compensate for the first three iterations, which are outliers
-        adjustTime = 4*batchTime - time ;
-        stats.time = time + adjustTime ;
+      % compensate for the first three iterations, which are outliers
+      adjustTime = 4*batchTime - time ; stats.time = time + adjustTime ;
     end
-    fprintf('speed %.1f (%.1f) Hz', averageSpeed, currentSpeed) ;
-    fprintf('\n') ;
-end
-
-net.move('cpu') ;
+    fprintf('speed %.1f (%.1f) Hz', averageSpeed, currentSpeed) ; fprintf('\n') ;
+  end
+  net.move('cpu') ;
 
 % -------------------------------------------------------------------------
 function clearMex()
 % -------------------------------------------------------------------------
-clear vl_tmove vl_imreadjpeg ;
+  clear vl_tmove vl_imreadjpeg ;
 
 % -------------------------------------------------------------------------
 function prepareGPUs(opts, cold)
 % -------------------------------------------------------------------------
-numGpus = numel(opts.gpus) ;
-if numGpus > 1
-  % check parallel pool integrity as it could have timed out
-  pool = gcp('nocreate') ;
-  if ~isempty(pool) && pool.NumWorkers ~= numGpus
-    delete(pool) ;
-  end
-  pool = gcp('nocreate') ;
-  if isempty(pool)
-    parpool('local', numGpus) ;
-    cold = true ;
-  end
-
-end
-if numGpus >= 1 && cold
-  fprintf('%s: resetting GPU\n', mfilename)
-  clearMex() ;
-  if numGpus == 1
-    gpuDevice(opts.gpus)
-  else
-    spmd
-      clearMex() ;
-      gpuDevice(opts.gpus(labindex))
+  numGpus = numel(opts.gpus) ;
+  if numGpus > 1
+    % check parallel pool integrity as it could have timed out
+    pool = gcp('nocreate') ;
+    if ~isempty(pool) && pool.NumWorkers ~= numGpus
+      delete(pool) ;
+    end
+    pool = gcp('nocreate') ;
+    if isempty(pool)
+      parpool('local', numGpus) ;
+      cold = true ;
     end
   end
-end
+  if numGpus >= 1 && cold
+    fprintf('%s: resetting GPU\n', mfilename)
+    clearMex() ;
+    if numGpus == 1
+      gpuDevice(opts.gpus)
+    else
+      spmd
+        clearMex() ;
+        gpuDevice(opts.gpus(labindex))
+      end
+    end
+  end

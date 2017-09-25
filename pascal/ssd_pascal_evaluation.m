@@ -2,7 +2,8 @@ function ssd_pascal_evaluation(varargin)
 %SSD_PASCAL_EVALUATION evaluate SSD detector on pascal VOC
 
 opts.net = [] ;
-opts.gpus = 2 ;
+opts.gpus = 3 ;
+opts.refresh = true ;
 opts.evalVersion = 'fast' ;
 opts.modelName = 'ssd-pascal-vggvd-300' ;
 
@@ -27,9 +28,9 @@ opts.prefetch = true ;
 opts.fixedSizeInputs = false ;
 
 % cache configuration 
-cacheOpts.refreshPredictionCache = false ;
-cacheOpts.refreshDecodedPredCache = false ;
-cacheOpts.refreshEvaluationCache = true ;
+cacheOpts.refreshPredictionCache = opts.refresh ;
+cacheOpts.refreshDecodedPredCache = opts.refresh ;
+cacheOpts.refreshEvaluationCache = opts.refresh ;
 cacheOpts.refreshFigures = true ;
 
 % configure model options
