@@ -12,6 +12,12 @@ Scott Reed, Cheng-Yang Fu, Alexander C. Berg
 The code is based on the `caffe` implementation 
 [made available](https://github.com/weiliu89/caffe/tree/ssd) by Wei Liu.
 
+### Demo
+
+Running the `ssd_demo.m` script will download a model trained on pascal voc 2007 data and run it on a sample image to produce the figure below:
+
+<img src="misc/figure.png" width="600" />
+
 ### Performance
 
 The `matconvnet` training code aims to reproduce the results

@@ -15,7 +15,7 @@ function ssd_demo(varargin)
 % Copyright (C) 2017 Samuel Albanie
 % Licensed under The MIT License [see LICENSE.md for details]
 
-  opts.gpu = 1 ;
+  opts.gpu = [] ;
   opts.modelPath = '' ;
   opts = vl_argparse(opts, varargin) ;
 
@@ -50,7 +50,9 @@ function ssd_demo(varargin)
   net.mode = 'test' ;
 
   % Load test image
-  im = single(imread('test.jpg')) ; im = imresize(im, [300 300]) ;
+  im = single(imread('misc/test.jpg')) ; 
+  numKeep = 2 ; 
+  im = imresize(im, [300 300]) ;
 
   % Evaluate network either on CPU or GPU.
   if numel(opts.gpu) > 0
@@ -72,22 +74,30 @@ function ssd_demo(varargin)
   [~, sortedIdx ] = sort(preds(:, 2), 'descend') ;
   preds = preds(sortedIdx, :) ;
 
-  % Extract the most confident prediction
-  box = preds(1,3:end) ;
-  confidence = preds(1,2) ;
-  label = classes{preds(1,1)} ;
+  % Extract the most confident predictions
+  box = double(preds(1:numKeep,3:end)) ;
+  confidence = preds(1:numKeep,2) ;
+  label = classes(preds(1:numKeep,1)) ;
 
   % Return image to cpu for visualisation
   if numel(opts.gpu) > 0, im = gather(im) ; end
 
   % Diplay prediction as a sanity check
-  figure ; im = im / 255 ;
-  x = box(1) * size(im, 2) ; y = box(2) * size(im, 1) ;
-  width = box(3) * size(im, 2) - x ; height = box(4) * size(im, 1) - y ;
+  figure(1) ; im = im / 255 ; CM = spring(numKeep); 
+  x = box(:,1) * size(im, 2) ; y = box(:,2) * size(im, 1) ;
+  width = box(:,3) * size(im, 2) - x ; height = box(:,4) * size(im, 1) - y ;
   rectangle = [x y width height];
-  im = insertShape(im, 'Rectangle', rectangle, 'LineWidth', 3, 'Color', 'red') ;
+  im = insertShape(im, 'Rectangle', rectangle, 'LineWidth', 4, ...
+                     'Color', CM(1:numKeep,:)) ;
   imagesc(im) ;
-  title(sprintf('top SSD prediction: %s \n confidence: %f', label, confidence)) ;
-
+  for ii = 1:numKeep
+    str = sprintf('%s: %.2f', label{ii}, confidence(ii)) ;
+    text(x(ii), y(ii)-10, str, 'FontSize', 14, ...
+        'BackgroundColor', CM(ii,:)) ;
+  end
+  title(sprintf('SSD predictions (top %d are displayed)', numKeep), ...
+                   'FontSize', 15) ;
+  axis off ;
+  
   % Free up the GPU allocation
   if numel(opts.gpu) > 0, net.move('cpu') ; end
