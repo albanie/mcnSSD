@@ -9,7 +9,7 @@ function ssd_demo(varargin)
 %    Path to a valid R-FCN matconvnet model. If none is provided, a model
 %    will be downloaded.
 %
-%   `gpus`:: []
+%   `gpu`:: []
 %    Device on which to run network 
 %
 % Copyright (C) 2017 Samuel Albanie
