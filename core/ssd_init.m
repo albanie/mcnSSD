@@ -319,6 +319,17 @@ if addExtraConv
                             channelsIn, confOut, locOut, usePriorCaching) ;
 end
 
+keyboard
+net.conserveMemory = 0 ;
+net.eval({'data', zeros(512, 512, 3, 'single')}) ;
+for ii = 1:numel(net.layers)
+  name = net.layers(ii).name ;
+  out = net.vars(net.getVarIndex(net.layers(ii).outputs)).value ;
+  sz = size(out) ;
+  fprintf('size: [%dx%dx%d], %s\n', size(out, 1), size(out, 2), ...
+                                size(out, 3), name) ;
+end
+
 % -------------------------------------
 % Fuse predictions  
 % -------------------------------------

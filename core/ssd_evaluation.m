@@ -207,13 +207,60 @@ function predictions = computePredictionsMultiscale(net, imdb, testIdx, opts)
 % ----------------------------------------------------------------------------
 prepareGPUs(opts, true) ; params.testIdx = testIdx ;
 predictions = cell(1, numel(opts.msOpts.scales)) ;
-for ii = 1:numel(opts.msOpts.scales) % need to do this for each scale
-  scale = opts.msOpts.scales(ii) ; 
+scales = opts.msOpts.scales ;
+rng(sum(clock)) ; % try to prevent redundant work
+scales = scales(randperm(numel(scales))) ; % wild west optimisation
+for ii = 1:numel(scales) % need to do this for each scale
+  scale = scales(ii) ; 
   % select net - original SSD is stored first, otherwise use modified net
   if scale == 1, net_ = net{1} ; else, net_ = net{2} ; end
   params.predIdx = net_.getVarIndex('detection_out') ;
-  state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
-  predictions{ii} = state.predictions ;
+  % feeling brave
+  cacheFile = sprintf('%s-%s-scale-%.2f.mat', ...
+                  opts.modelName, opts.testset, scale) ;
+  [~,placeHolder,~] = fileparts(cacheFile) ;
+  placeHolderFile = sprintf('%s.txt', placeHolder) ;
+  cachePath = fullfile(vl_rootnn, 'data/coco17', cacheFile) ;
+  placeHolderPath = fullfile(vl_rootnn, 'data/coco17/plc/', placeHolderFile) ;
+  if exist(cachePath, 'file')
+    tmp = load(cachePath) ;
+    predictionsMs = tmp.predictionsMs ;
+    fprintf('loaded scale %f from cache \n', scale) ;
+  elseif exist(placeHolderPath, 'file')
+    fprintf('skipping evaluation of scale: %.2f\n', scale) ;
+    continue ;
+  else
+    if ~exist(fileparts(placeHolderPath), 'dir')
+      mkdir(fileparts(placeHolderPath)) ; 
+    end
+    fid = fopen(placeHolderPath, 'w') ;
+    fprintf(fid, 'scale %.2f is being processed \n', scale) ;
+    fclose(fid) ;
+    fprintf('processing scale: %g\n', scale) ;
+    if numel(opts.gpus) <= 1
+      addpath(fullfile(vl_rootnn, 'contrib/mcnSSD/matlab/mex')) ; % parallel path issue
+       state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
+       predictionsMs = state.predictions ;
+    else
+      predictionsMs = zeros(200, 6, 1, numel(testIdx), 'single') ; 
+      addpath(fullfile(vl_rootnn, 'contrib/mcnSSD/matlab/mex')) ; % parallel path issue
+      spmd
+        state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
+      end
+      for i = 1:numel(opts.gpus)
+        state_ = state{i} ;
+        predictionsMs(:,:,:,state_.computedIdx) = state_.predictions ;
+      end
+    end
+    tmp.predictionsMs = predictionsMs ;
+    if ~exist(fileparts(cachePath), 'dir'), mkdir(fileparts(cachePath)) ; end
+    save(cachePath, '-struct', 'tmp', '-v7.3') ;
+  end
+  predictions{ii} = predictionsMs ;
+
+  % safe mode
+  %state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
+  %predictions{ii} = state.predictions ;
 end
 predictions = mergeMultiscalePredictions(predictions, imdb, opts) ;
 
@@ -236,6 +283,57 @@ function predictions = computePredictions(net, imdb, testIdx, opts)
       predictions(:,:,:,state_.computedIdx) = state_.predictions ;
     end
   end
+
+% --------------------------------------------------------------------
+function selectedPreds = mergeMultiscalePredictions(preds, imdb, opts) 
+% --------------------------------------------------------------------
+selectedPreds = zeros(size(preds{1}), 'like', preds{1}) ;
+batchSize = size(selectedPreds, 4) ;
+numClasses = numel(imdb.meta.classes) - 1 ;
+mergeFactor = numel(preds) ; 
+allPreds = cat(4, preds{:}) ; % merge all preds
+
+% loop over batch and combine
+for bb = 1:batchSize
+  classPreds = cell(1, numClasses) ;
+
+  % try not to screw up indexing
+  keep = bb:batchSize:mergeFactor*batchSize ;
+  preds_ = cat(4, allPreds(:,:,:,keep)) ;
+  fprintf('%d/%d\n', bb, batchSize) ;
+
+  % run NMS on the collection (per class)
+  for ii = 1:numClasses
+
+    % deal with offset
+    cIdx = ii + 1 ;  
+    classPreds_ = [] ;
+
+    % do the merge
+    for jj = 1:size(preds_,4)
+      % select all predictions for class
+      classKeep = find(preds_(:,1,:,jj) == cIdx) ;
+      classPreds_ = [ classPreds_ ; preds_(classKeep,:,:,jj) ] ;
+    end
+
+    % rearrange for nms (scores in the last column)
+    if ~isempty(classPreds_)
+      candidates = classPreds_(:, [3 4 5 6 2]) ; 
+      keepIdx = vl_nms(candidates, ...
+                       'overlapThreshold', opts.msOpts.nmsThresh, ...
+                       'topK', size(preds_,1)) ;
+      classPreds_ = classPreds_(keepIdx,:) ;
+     end
+    classPreds{ii} = classPreds_ ;
+  end
+
+  % recombine and pick top elements by confidence
+  combined = vertcat(classPreds{:}) ;
+  sortedCombined = sortrows(combined, -2) ;
+
+  numKeep = min(size(preds_,1), size(sortedCombined, 1)) ;
+  selectedPreds(1:numKeep,:,:,bb) = sortedCombined(1:numKeep,:) ;
+end
 
 % -------------------------------------------------------------------
 function state = processDetections(net, imdb, params, opts, varargin) 
@@ -271,7 +369,7 @@ function state = processDetections(net, imdb, params, opts, varargin)
     if ~isempty(sopts.scale), args = [args, {sopts.scale}] ; end %#ok
     inputs = opts.modelOpts.get_eval_batch(args{:}) ;
 
-    if opts.prefetch
+    if opts.batchOpts.prefetch
       batchStart_ = t + (labindex - 1) + opts.batchOpts.batchSize ;
       batchEnd_ = min(t + 2*opts.batchOpts.batchSize - 1, numel(testIdx)) ;
       nextBatch = testIdx(batchStart_: numlabs : batchEnd_) ;
@@ -279,7 +377,7 @@ function state = processDetections(net, imdb, params, opts, varargin)
       if ~isempty(sopts.scale), args = [args, {sopts.scale}] ; end %#ok
       opts.modelOpts.get_eval_batch(args{:}, 'prefetch', true) ;
     end
-    net.eval(inputs, 'test') ;
+    net.eval(inputs, 'testmemoryless') ;
     storeIdx = offset:offset + numel(batch) - 1 ;offset = offset + numel(batch) ;
     state.predictions(:,:,:,storeIdx) = net.vars{params.predIdx} ;
     time = toc(start) + adjustTime ; batchTime = time - stats.time ;

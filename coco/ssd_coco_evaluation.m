@@ -40,13 +40,13 @@ function results = ssd_coco_evaluation(varargin)
   opts.gpus = 1 ;
   opts.dataRoot = fullfile(vl_rootnn, 'data/datasets') ;
   opts.batchSize = 8 ;
-  opts.year = 2014 ; % 2015 only contains test instances
+  opts.year = 2014 ;
   opts.msScales = 1 ; % by default, only single scale selection is used
   opts.useMiniVal = 1 ; 
   opts.testset = 'val' ;
   opts.visualise = false ;
-  opts.refreshCache = true ;
-  opts.modelName = 'ssd-mscoco-vggvd-512' ;
+  opts.refreshCache = false ;
+  opts.modelName = 'ssd-mscoco-vggvd-300' ;
   opts = vl_argparse(opts, varargin) ;
 
   if isempty(opts.net)
@@ -71,14 +71,17 @@ function results = ssd_coco_evaluation(varargin)
 
   % configure batch opts
   numGpus = numel(opts.gpus) ; batchOpts.use_vl_imreadjpeg = true ;
-  batchOpts.batchSize = opts.batchSize * numGpus ; batchOpts.numThreads = 4 * numGpus ;
+  batchOpts.batchSize = opts.batchSize * numGpus ; 
+  batchOpts.numThreads = 4 * numGpus ;
   batchOpts.batchRenormalization = ~isempty(strfind('-rn', opts.modelName)) ;
-  batchOpts.imMean = opts.net.meta.normalization.averageImage ;
-  if isfield(opts.net.meta.normalization, 'scaleInputs')
-    batchOpts.scaleInputs = opts.net.meta.normalization.scaleInputs ;
-  else
-    batchOpts.scaleInputs = 0 ; % image scaling is only used by mobilenet
-  end
+
+  % not used in multiscale code currently
+  %batchOpts.imMean = opts.net.meta.normalization.averageImage ; % 
+  %if isfield(opts.net.meta.normalization, 'scaleInputs')
+    %batchOpts.scaleInputs = opts.net.meta.normalization.scaleInputs ;
+  %else
+    %batchOpts.scaleInputs = 0 ; % image scaling is only used by mobilenet
+  %end
 
   % cache configuration and model
   if numel(imSz) == 1, imSz = repmat(imSz, [1 2]) ; end ; batchOpts.imageSize = imSz ;
@@ -147,6 +150,10 @@ function [opts, imdb] = configureImdbOpts(~, opts, imdb)
         imdb.images.set(fullValIms(~keep)) = 1 ;
       end
     case 2015 % do nothing
+    case 2017 % do nothing
+      % mini-check with val - debugging
+      %fullValIms = find(imdb.images.set == 2) ;
+      %imdb.images.set(fullValIms(100:end)) = -1 ;
   end
 
 % ------------------------------------------------------------------
@@ -209,9 +216,15 @@ function displayCocoResults(~, aps, opts)
 if ~strcmp(opts.testset, 'val'), return ; end 
 [~,labels] = getCocoLabelMap('labelMapFile', opts.dataOpts.labelMapFile) ;
 iou=0.5:0.05:0.95 ; areas='asml' ; mdets=[1 10 100] ;
-t = 1 ; a = 1 ; m = 3 ; 
-fprintf('AP @0.5 IoU, areas=%s, max dets/img=%d\n',iou(t),areas(a),mdets(m)) ;
-for ii = 1:numel(aps.params.catIds)
-  s = aps.precision(1,:,ii,a,m) ; s=mean(s(s>=0)) * 100 ; 
-  fprintf('%.1f: %s \n', s, labels{ii}) ;
-end
+t = 1 ; 
+a = 1 ; 
+m = 3 ; % max dets = 100
+%fprintf('AP @0.5 IoU, areas=%s, max dets/img=%d\n',iou(t),areas(a),mdets(m)) ;
+%tot = zeros(1, numel(aps.params.catIds) ;
+%for ii = 1:numel(aps.params.catIds)
+  %s = aps.precision(1,:,ii,a,m) ; s=mean(s(s>=0)) * 100 ; 
+  %tot(ii) = s ;
+  %fprintf('%.1f: %s \n', s, labels{ii}) ;
+%end
+s = aps.precision(:,:,:,a,m) ; cocoScore = mean(s(s>=0)) * 100 ;
+fprintf('coco score for %s: %g \n', opts.modelName, cocoScore) ;
