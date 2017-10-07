@@ -15,7 +15,7 @@ function net = ssd_deploy(srcPath, destPath, numClasses)
   outDir = fileparts(destPath) ;
   if ~exist(outDir, 'dir'), mkdir(outDir) ; end
   tmp = load(srcPath) ; 
-  if ~isfield(tmp.net, 'foward') % support dagnn checkpoints
+  if ~isfield(tmp.net, 'forward') % support dagnn checkpoints
     dag = dagnn.DagNN.loadobj(tmp.net) ;
     dag.removeLayer('loc_loss') ;
     dag.removeLayer('class_loss') ;
