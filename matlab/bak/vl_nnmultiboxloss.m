@@ -1,4 +1,4 @@
-function [y, dzdl] = vl_nnmultiboxloss(x, l, varargin)
+function y = vl_nnmultiboxloss(x, l, varargin)
 %VL_NNMULTIBOXLOSS computes the Multibox Loss
 %   Y = VL_NNMULTIBOXLOSS(X, L, N) computes the Multibox Loss which 
 %   is a weighted combination of the class prediction loss and 
@@ -22,13 +22,13 @@ function [y, dzdl] = vl_nnmultiboxloss(x, l, varargin)
 %   `locWeight`:: 1
 %    A scalar which weights the loss contribution of the regression loss. 
 
-  opts.locWeight = 1 ;
-  [opts, dzdy] = vl_argparsepos(opts, varargin, 'nonrecursive') ;
+opts.locWeight = 1 ;
+[dzdy, opts] = vl_argparseder(opts, varargin) ;
 
-  if isempty(dzdy)
-      y = x + opts.locWeight * l ;
-  else
-      dzdx = dzdy{1} ; 
-      dzdl = dzdx * opts.locWeight ;
-      y = dzdx ;
-  end
+if isempty(dzdy)
+    y = x + opts.locWeight * l ;
+else
+    dzdx = dzdy  ;
+    dzdl = dzdy * opts.locWeight ;
+    y = {dzdx, dzdl} ;
+end

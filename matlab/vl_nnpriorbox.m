@@ -59,104 +59,104 @@ function y = vl_nnpriorbox(x, im, varargin)
 %    Dictates how many pixels in the input image, IM correspond 
 %    to a single pixel in the feature layer X
 
-opts.aspectRatios = 2 ;
-opts.flip = true ;
-opts.clip = false ;
-opts.minSize = 0.1 ;
-opts.maxSize = 0.2 ;
-opts.offset = 0.5 ;
-opts.pixelStep = 1 ;
-opts.variance = [0.1 0.1 0.2 0.2] ;
+  opts.aspectRatios = 2 ;
+  opts.flip = true ;
+  opts.clip = false ;
+  opts.offset = 0.5 ;
+  opts.minSize = 0.1 ;
+  opts.maxSize = 0.2 ;
+  opts.pixelStep = 1 ;
+  opts.variance = [0.1 0.1 0.2 0.2] ;
 
-opts = vl_argparse(opts, varargin, 'nonrecursive') ;
+  opts = vl_argparse(opts, varargin, 'nonrecursive') ;
 
-% Each spatial element of the input layer `im` produces a corresponding
-% prior box in the input image. We assume that every image in the
-% batch is the same size so that the prior boxes can be duplicated
-% across all input images. 
-layerWidth = size(x, 2) ;
-layerHeight = size(x, 1) ;
-imgWidth = size(im, 2) ;
-imgHeight = size(im, 1) ;
+  % Each spatial element of the input layer `im` produces a corresponding
+  % prior box in the input image. We assume that every image in the
+  % batch is the same size so that the prior boxes can be duplicated
+  % across all input images. 
+  layerWidth = size(x, 2) ;
+  layerHeight = size(x, 1) ;
+  imgWidth = size(im, 2) ;
+  imgHeight = size(im, 1) ;
 
-% There is one prior box by default, which has apsect ratio 1.
-% If flipping is enabled, each addtional aspect ratio generates
-% two extra prior boxes.
-aspectRatios = opts.aspectRatios ;
-if opts.flip
-    aspectRatios = cat(1, aspectRatios, 1 ./ aspectRatios) ;
-end
-numAspectRatios = 1 + numel(aspectRatios) ;
+  % There is one prior box by default, which has apsect ratio 1.
+  % If flipping is enabled, each addtional aspect ratio generates
+  % two extra prior boxes.
+  aspectRatios = opts.aspectRatios ;
+  if opts.flip
+      aspectRatios = cat(1, aspectRatios, 1 ./ aspectRatios) ;
+  end
+  numAspectRatios = 1 + numel(aspectRatios) ;
 
-% An additional box is generated if the maxSize property is specified
-boxesPerPosition = numAspectRatios + logical(opts.maxSize) ;
-numBoxes = layerWidth * layerHeight * boxesPerPosition ; 
-boxes = zeros(numBoxes * 4, 1) ;
+  % An additional box is generated if the maxSize property is specified
+  boxesPerPosition = numAspectRatios + logical(opts.maxSize) ;
+  numBoxes = layerWidth * layerHeight * boxesPerPosition ; 
+  boxes = zeros(numBoxes * 4, 1) ;
 
-% maintain compatibility
-if opts.pixelStep == 0
-  opts.pixelStep = imgWidth / layerWidth ;
-  heightStep = imgHeight / layerHeight ;
-  assert(opts.pixelStep == heightStep, 'non-square input not supported using `old-style` caffe syntax') ;
-end
+  % maintain compatibility
+  if opts.pixelStep == 0
+    opts.pixelStep = imgWidth / layerWidth ;
+    heightStep = imgHeight / layerHeight ;
+    assert(opts.pixelStep == heightStep, 'non-square input not supported using `old-style` caffe syntax') ;
+  end
 
-idx = 1 ;
-for i = 1:layerHeight
-    for j = 1:layerWidth
+  idx = 1 ;
+  for i = 1:layerHeight
+      for j = 1:layerWidth
 
-        centreX = (j - opts.offset) * opts.pixelStep ;
-        centreY = (i - opts.offset) * opts.pixelStep ;
-        
-        boxWidth = opts.minSize ;
-        boxHeight = opts.minSize ;
-        
-        % first prior box:
-        %  aspect ratio 1, size = opts.minSize
-        xMin = (centreX - boxWidth / 2)  / imgWidth ;
-        yMin = (centreY - boxHeight / 2) / imgHeight ;
-        xMax = (centreX + boxWidth / 2)  / imgWidth ;
-        yMax = (centreY + boxHeight / 2) / imgHeight ;
-        boxes(idx:idx + 3) = [xMin, yMin, xMax, yMax]' ;
-        idx = idx + 4 ;
-        
-        if opts.maxSize > 0
-            % second prior box:
-            %   aspect ratio 1, size = sqrt(opts.minSize * opts.maxSize)
-            length = sqrt(opts.minSize * opts.maxSize) ;
-            boxWidth = length ;
-            boxHeight = length ;
-            
-            xMin = (centreX - boxWidth / 2)  / imgWidth ;
-            yMin = (centreY - boxHeight / 2) / imgHeight ;
-            xMax = (centreX + boxWidth / 2)  / imgWidth ;
-            yMax = (centreY + boxHeight / 2) / imgHeight ;
-            boxes(idx:idx + 3) = [xMin, yMin, xMax, yMax]' ;
-            idx = idx + 4 ;
-        end
-        
-        for k = 1:numel(aspectRatios)
-            if abs(aspectRatios(k) - 1) < 1e-6
-                continue ;
-            end
-            boxWidth = opts.minSize * sqrt(aspectRatios(k)) ;
-            boxHeight = opts.minSize / sqrt(aspectRatios(k)) ;
-            
-            xMin = (centreX - boxWidth/2)  / imgWidth ;
-            yMin = (centreY - boxHeight/2) / imgHeight ;
-            xMax = (centreX + boxWidth/2)  / imgWidth ;
-            yMax = (centreY + boxHeight/2) / imgHeight ;
-            boxes(idx:idx + 3) = [xMin, yMin, xMax, yMax]' ;
-            idx = idx + 4 ;            
-        end
-    end
-end
+          centreX = (j - opts.offset) * opts.pixelStep ;
+          centreY = (i - opts.offset) * opts.pixelStep ;
+          
+          boxWidth = opts.minSize ;
+          boxHeight = opts.minSize ;
+          
+          % first prior box:
+          %  aspect ratio 1, size = opts.minSize
+          xMin = (centreX - boxWidth / 2)  / imgWidth ;
+          yMin = (centreY - boxHeight / 2) / imgHeight ;
+          xMax = (centreX + boxWidth / 2)  / imgWidth ;
+          yMax = (centreY + boxHeight / 2) / imgHeight ;
+          boxes(idx:idx + 3) = [xMin, yMin, xMax, yMax]' ;
+          idx = idx + 4 ;
+          
+          if opts.maxSize > 0
+              % second prior box:
+              %   aspect ratio 1, size = sqrt(opts.minSize * opts.maxSize)
+              length = sqrt(opts.minSize * opts.maxSize) ;
+              boxWidth = length ;
+              boxHeight = length ;
+              
+              xMin = (centreX - boxWidth / 2)  / imgWidth ;
+              yMin = (centreY - boxHeight / 2) / imgHeight ;
+              xMax = (centreX + boxWidth / 2)  / imgWidth ;
+              yMax = (centreY + boxHeight / 2) / imgHeight ;
+              boxes(idx:idx + 3) = [xMin, yMin, xMax, yMax]' ;
+              idx = idx + 4 ;
+          end
+          
+          for k = 1:numel(aspectRatios)
+              if abs(aspectRatios(k) - 1) < 1e-6
+                  continue ;
+              end
+              boxWidth = opts.minSize * sqrt(aspectRatios(k)) ;
+              boxHeight = opts.minSize / sqrt(aspectRatios(k)) ;
+              
+              xMin = (centreX - boxWidth/2)  / imgWidth ;
+              yMin = (centreY - boxHeight/2) / imgHeight ;
+              xMax = (centreX + boxWidth/2)  / imgWidth ;
+              yMax = (centreY + boxHeight/2) / imgHeight ;
+              boxes(idx:idx + 3) = [xMin, yMin, xMax, yMax]' ;
+              idx = idx + 4 ;            
+          end
+      end
+  end
 
-% If clip is true, constrain all relative box coordinates to
-% lie in the interval [0,1].
-if opts.clip
-  boxes(boxes(:) < 0) = 0 ;
-  boxes(boxes(:) > 1) = 1 ;
-end
+  % If clip is true, constrain all relative box coordinates to
+  % lie in the interval [0,1].
+  if opts.clip
+    boxes(boxes(:) < 0) = 0 ;
+    boxes(boxes(:) > 1) = 1 ;
+  end
 
-variances = repmat(opts.variance, [numBoxes 1]) ;
-y = cast(cat(3, boxes, variances), 'like', x) ;
+  variances = repmat(opts.variance, [numBoxes 1]) ;
+  y = cast(cat(3, boxes, variances), 'like', x) ;

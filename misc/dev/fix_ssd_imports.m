@@ -7,16 +7,13 @@ function fix_ssd_imports(varargin)
 % Copyright (C) 2017 Samuel Albanie
 % Licensed under The MIT License [see LICENSE.md for details]
 
-  %opts.imdbPath = fullfile(vl_rootnn, 'data/imagenet12/imdb.mat') ;
   opts.numClasses = 21 ;
   opts.modelDir = fullfile(vl_rootnn, 'data/models-import') ;
   opts = vl_argparse(opts, varargin) ;
 
-  %imdb = load(opts.imdbPath) ;
-
   % select model
   res = dir(fullfile(opts.modelDir, '*.mat')) ; modelNames = {res.name} ;
-  modelNames = modelNames(contains(modelNames, 'ssd-mscoco')) ;
+  modelNames = modelNames(contains(modelNames, 'ssd')) ;
 
   for mm = 1:numel(modelNames)
     modelPath = fullfile(opts.modelDir, modelNames{mm}) ;
@@ -67,12 +64,10 @@ function fix_ssd_imports(varargin)
           net.layers(ii).block.shape = {opts.numClasses  []  1} ;
         end
       end
-
     end
 
     % fix meta 
     fprintf('adding info to %s (%d/%d)\n', modelPath, mm, numel(modelNames)) ;
-    %net.meta.classes = imdb.classes ;
     if contains(modelPath, '300')
       net.meta.normalization.imageSize = [300 300 3] ;
     elseif contains(modelPath, '512')
@@ -80,8 +75,12 @@ function fix_ssd_imports(varargin)
     else
       keyboard
     end
-    if ~contains(modelNames, 'mcn')
+    if ~contains(modelPath, 'mobilenet')
       net.meta.normalization.averageImage = [123 117 104] ; % caffe pretraining
+      net.meta.normalization.scaleInputs = [] ; % google pretraining
+    else
+      net.meta.normalization.averageImage = [127.5, 127.5, 127.5] ; 
+      net.meta.normalization.scaleInputs = 0.007843 ; % google pretraining
     end
     net = dagnn.DagNN.loadobj(net) ; 
     net = net.saveobj() ; save(modelPath, '-struct', 'net') ; %#ok

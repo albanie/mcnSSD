@@ -1,4 +1,4 @@
-function y = vl_nnmultiboxcoder(x, v, p, gt, l, varargin) 
+function [targetPreds, classPreds, tWeights] = vl_nnmultiboxcoder(x, v, m, n, gt, l, varargin) 
 %VL_NNMULTIBOXCODER encodes/decodes labels/predictions into locations
 %   Y = VL_NNMULTIBOXCODER(X, V, P, GT, L) encodes the training
 %   annotations and the network outputs into a common format 
@@ -17,23 +17,12 @@ function y = vl_nnmultiboxcoder(x, v, p, gt, l, varargin)
 %   
 %   The input V is a 1 x 1 x C2 x N  array containing the per-class 
 %   confidence predictions of the network where C2 = numClasses * 21.
-%
-%   The input P is a C3 x 1 x 2 x N array containing the prior boxes, 
-%   which are encoded as a set of bbox coordinates (xminx, ymin, 
-%   xmax, ymax) and a set of four "variances" which are used to scale 
-%   the resulting boxes, where C3 = 4 * B
 %   
 %   The input GT is a 1 x 1 x C5 x N array containing the 
-%   annotations .....................TODO
-
 %   The input L is a 1 x 1 x C4 x N array containing the 
-%   annotations .....................TODO
 %
-%   TODO: docuemnt the outputs properly....
-%   
 %   The output y is a 1 x 6 cell array whose values are the following:
 %   outputs{1} is a vector of encoded location predictions
-%   outputs{2} is a vector of ground truth bounding box targets 
 %   outputs{3} is a vector of instance weights used to compute the bbox loss
 %   outputs{4} is a vector of class predictions
 %   outputs{5} is a vector of ground truth class labels
@@ -50,19 +39,6 @@ function y = vl_nnmultiboxcoder(x, v, p, gt, l, varargin)
 %    The number of classes predicted by the network (used to decode the
 %    inputs X and V). 
 %
-%   `overlapThreshold`:: 0.5 
-%    The threshold used to determine whether a ground truth annotation is 
-%    to be matched to a given prior box. The prior box then becomes a 
-%    positive example during training.
-%
-%   `negPosRatio`:: 3 
-%    The ratio of negative to positive instances used during hard negative 
-%    mining.
-%
-%   `backgroundLabel`:: 1 
-%    Labels in `L` with this value are not used as positive training 
-%    instances.
-%
 %   `matchingPosIndices`:: [] 
 %    The indices of the positively matched prior boxes (only used in 
 %    backward pass.
@@ -71,163 +47,125 @@ function y = vl_nnmultiboxcoder(x, v, p, gt, l, varargin)
 %    The indices of the negatively matched prior boxes (only used in 
 %    backward pass.
 
-  opts.negPosRatio = 3 ;
-  opts.numClasses = 21 ;
-  opts.backgroundLabel = 1 ;
-  opts.overlapThreshold = 0.5 ;
-  opts.matchingPosIndices = {} ;
-  opts.matchingNegIndices = {} ;
-  opts.ignoreXBoundaryBoxes = false ;
-  [opts, dzdy] = vl_argparsepos(opts, varargin) ;
+opts.numClasses = 21 ;
+opts.ignoreXBoundaryBoxes = false ;
+opts.addNegativeTargets = false;
+[opts, dzdy] = vl_argparsepos(opts, varargin, 'nonrecursive') ;
 
-  cellfun(@(b) assert(all(all(b(:,3:4) - b(:,1:2) > 0)), ...
-          'MULTIBOXCODER:invalidGroundTruthBoxes', ...
-          'ground truth boxes must be in the (xmin, ymin, xmax, ymax) format'), ...
-          gt) ;
+batchSize = size(x, 4) ;
 
-  batchSize = size(x, 4) ;
-  numPriors = size(p, 1) / 4 ;
+% output the decoded class predictions and extended labels
+if isempty(dzdy)
+
+  cellfun(@(x) assert(all(all(x(:,3:4) - x(:,1:2) > 0)), ...
+    'MULTIBOXCODER:invalidGroundTruthBoxes', ...
+    'ground truth boxes must be in the (xmin, ymin, xmax, ymax) format'), ...
+    gt) ;
+
+  % ----------------------------------------------------
+  % Decoding predctions, priors and ground truth annotations
+  % ----------------------------------------------------
+
   numGtBoxes = cellfun(@(x) size(x, 1), gt) ;
+  locPreds = permute(reshape(x, 4, [], 1, batchSize), [ 2 1 3 4]) ;
+  confPreds = permute(reshape(v, opts.numClasses, [], 1, batchSize), ...
+                                                          [2 1 3 4]) ;
 
-  % output the decoded class predictions and extended labels
-  if isempty(dzdy)
+  % loop over batch
+  for i = 1:batchSize
 
-      % ----------------------------------------------------
-      % Decoding predctions, priors and ground truth annotations
-      % ----------------------------------------------------
+    l_ = l{i} ;
+    gt_ = gt{i} ;
+    matches = m(i) ;
+    hardNegs = n{i} ;
+    numGtBoxes_ = numGtBoxes(i) ;
+    locPreds_ = locPreds(:,:,:,i) ;
+    confPreds_ = confPreds(:,:,:,i) ;
 
-      locPreds = permute(reshape(x, 4, numPriors, 1, batchSize), [ 2 1 3 4]) ;
-      confPreds = permute(reshape(v, opts.numClasses, numPriors, 1, batchSize), ...
-                                                              [2 1 3 4]) ;
-
-      % Priors are identical across a batch, so we only produce one 
-      % set per batch
-      priors = reshape(p, numPriors, 4, 2) ;
-      pBoxes = reshape(priors(:,:,1), 4, [])' ;
-      pVar = reshape(priors(:,:,2), 4, [])' ;
-
-      % loop over batch
-      for i = 1:batchSize
-
-          locPreds_ = locPreds(:,:,:,i) ;
-          confPreds_ = confPreds(:,:,:,i) ;
-          numGtBoxes_ = numGtBoxes(i) ;
-          l_ = l{i} ;
-          gt_ = gt{i} ;
-
-          % ----------------------------------------------------
-          % Matching 
-          % ----------------------------------------------------
-
-          pBoxes = gather(pBoxes) ;
-          [matches, allOverlaps, ignored] = matchPriors(gt_, pBoxes, ...
-                       'overlapThreshold', opts.overlapThreshold, ...
-                       'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
-          matchesPerGt = cellfun(@numel, matches)' ;
-          matchIdx = horzcat(matches{:}) ;
-
-          % re-format bounding boxes
-          gtCenWH = bboxCoder(gt_, 'MinMax', 'CenWH') ;
-          pCenWH = bboxCoder(pBoxes, 'MinMax', 'CenWH') ;
-
-          % Repeat the each gt bounding for every prior it has been matched 
-          % to box to (allows vectorization of the bbox target computation)
-          repGtBoxesWH_ = arrayfun(@(x) repmat(gtCenWH(x,:), ...
-                                  [matchesPerGt(x) 1]), 1:numGtBoxes_, ...
-                                  'Uni', false) ;
-          repGtBoxesWH = vertcat(repGtBoxesWH_{:}) ;
-              
-          % ------------------------------------------------------
-          % Compute target offsets
-          % ------------------------------------------------------
-          targets{i} = priorCoder(repGtBoxesWH, pCenWH(matchIdx,:), ...
-                          pVar(matchIdx, :), 'targets') ;
-
-          targetPreds_ = cellfun(@(x) locPreds_(x,:), matches, 'Uni', false) ;
-          targetPreds{i} = vertcat(targetPreds_{:}) ;
-
-          % Add hard negatives
-          hardNegs = hardNegatives(confPreds_, matches, allOverlaps, ignored, ...
-                            'backgroundLabel', opts.backgroundLabel, ...
-                            'negPosRatio', opts.negPosRatio, ...
-                            'ignoreXBoundaryBoxes', opts.ignoreXBoundaryBoxes) ;
-
-          % store the matching indices for backprop pass
-          % NOTE: only the positives are used to compute the regression loss
-          matchingPosIndices{i} = horzcat(matches{:})' ;
-          matchingNegIndices{i} = hardNegs ;
-
-          % repeat labels for each ground truth match
-          extendedLabels_ = arrayfun(@(x) repmat(l_(x), [1 numel(matches{x})]), ...
-                                      1:numGtBoxes_, 'Uni', false) ;
-
-          % add the negative labels
-          extendedLabels{i} = horzcat(extendedLabels_{:}, ...
-                             ones(1, numel(hardNegs)) * opts.backgroundLabel) ;
-
-          % compute the predicted labels
-          posPreds = cellfun(@(x) confPreds_(x,:), matches, 'Uni', false) ;
-          negPreds = confPreds_(hardNegs,:) ;
-          classPreds_ = vertcat(posPreds{:}, negPreds) ;
-          classPreds{i} = permute(classPreds_, [ 3 4 2 1]) ; % prepend singletons
-      end
-
-      % concatenate across the batch
-      targetPreds = cat(1, targetPreds{:}) ;
-      targets = cat(1, targets{:}) ;
-      classPreds = cat(4, classPreds{:}) ;
-      extendedLabels = cat(2, extendedLabels{:}) ;
-
-      y = { targetPreds, targets, classPreds, extendedLabels, ...
-            matchingPosIndices, matchingNegIndices } ;
-
-  else
-      % sparse matrix operations are (currently) more efficient on the CPU
-      dzdLoc = gather(dzdy{1}{1}) ;
-      dzdConf = gather(squeeze(dzdy{1}{2})') ;
-
-      locDer = zeros(numPriors, 4, 1, batchSize, 'single') ;
-      confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'single') ;
-
-      % reshape the derivatives into the appropriate batch elements
-      locDerSizes = cellfun(@numel, opts.matchingPosIndices) ;
-      confDerSizes = cellfun(@(x,y) numel(x) + numel(y), ...
-                              opts.matchingPosIndices, ...
-                              opts.matchingNegIndices) ;
-
-      locCumSizes = [ 0 cumsum(locDerSizes) ] ;
-      confCumSizes = [ 0 cumsum(confDerSizes) ] ;
-      
-      for i = 1:batchSize
-          locDer_{i} = dzdLoc(locCumSizes(i) + 1:locCumSizes(i+1),:) ;
-          confDer_{i} = dzdConf(confCumSizes(i) + 1:confCumSizes(i+1),:) ;
-      end
-
-      % loop over batch to fill in the derivatives
-      for i = 1:batchSize
-
-          % scale the derivatives according the number of matched priors
-          matchPos = gather(opts.matchingPosIndices{i}) ;
-          matchNeg = gather(opts.matchingNegIndices{i}) ;
-          matchAll = vertcat(matchPos, matchNeg) ;
-      
-          locDerTmp = double(locDer_{i}) ;
-          confDerTmp = double(confDer_{i}) ;
-      
-          sparsePos = sparse(matchPos, 1:numel(matchPos), 1, ...
-                              numPriors, numel(matchPos)) ;
-          tmp = sparsePos * locDerTmp ;
-          locDer(:,:,:,i) = single(tmp) ;
+    targetPreds_     = cellfun(@(x) locPreds_(x,:), matches.idx, 'Uni', false) ;
+    targetPreds{i}   = vertcat(targetPreds_{:}) ;  
     
-          sparseAll = sparse(matchAll, 1:numel(matchAll), 1, ...
-                              numPriors, numel(matchAll)) ;
-          tmp = sparseAll * confDerTmp ;
-          confDer(:,:,:,i) = single(tmp) ;
+    % compute the predicted labels
+    posPreds = cellfun(@(x) confPreds_(x,:), matches.idx, 'Uni', false) ;
+    negPreds = confPreds_(hardNegs,:) ;
+    classPreds_ = vertcat(posPreds{:}, negPreds) ;
+    classPreds{i} = permute(classPreds_, [ 3 4 2 1]) ; % prepend singletons
 
-      end
-
-      locDer = cast(reshape(permute(locDer, [2 1 3 4]), size(x)), 'like', x) ;
-      confDer = cast(reshape(permute(confDer, [2 1 3 4]), size(v)), 'like', v) ;
-
-      y = {locDer, confDer} ;
   end
+
+  % append loc predictions for hard negs
+  if opts.addNegativeTargets
+    for i = 1:batchSize
+      targetPreds{end+1} = locPreds(n{i},:,:,i) ;
+    end
+  end
+
+  % concatenate across the batch
+  targetPreds = cat(1, targetPreds{:}) ;
+  classPreds = cat(4, classPreds{:}) ;
+
+  numPos = sum(cellfun(@numel, [matches.idx])) ;
+ 
+  % compute weights
+  confWeights = ones(1, 1, 1, size(classPreds, 4)) * (1 / sum(numPos)) ;
+
+  if opts.addNegativeTargets
+    tWeights = zeros(size(targetPreds)) ;
+    tWeights(1:numPos,:,:,:) = (1 / sum(numPos));
+  end
+
+
+else
+  dzdLoc = gather(dzdy{1}) ;
+  dzdConf = gather(squeeze(dzdy{2})') ;
+  numPriors = size(x, 3) / 4 ;
+
+  locDer = zeros(numPriors, 4, 1, batchSize, 'single') ;
+  confDer = zeros(numPriors, opts.numClasses, 1, batchSize, 'single') ;
+
+  % reshape the derivatives into the appropriate batch elements
+  pos = arrayfun(@(x) {horzcat(m(x).idx{:})}, 1:numel(m)) ;
+  neg = cellfun(@(x) {gather(x)}, n) ;
+
+  locDerSizes = cellfun(@numel, pos) ;
+  confDerSizes = locDerSizes + cellfun(@numel, neg) ;
+
+  locCumSizes = [ 0 cumsum(locDerSizes) ] ;
+  confCumSizes = [ 0 cumsum(confDerSizes) ] ;
+  
+
+  for i = 1:batchSize
+    locDer_{i} = dzdLoc(locCumSizes(i) + 1:locCumSizes(i+1),:) ;
+    confDer_{i} = dzdConf(confCumSizes(i) + 1:confCumSizes(i+1),:) ;
+  end
+
+  % loop over batch to fill in the derivatives
+  for i = 1:batchSize
+
+    % scale the derivatives according the number of matched priors
+    matchPos = pos{i} ;
+    matchNeg = neg{i} ;
+    matchAll = horzcat(matchPos, matchNeg) ;
+
+    locDerTmp = double(locDer_{i}) ;
+    confDerTmp = double(confDer_{i}) ;
+ 
+    sparsePos = sparse(matchPos, 1:numel(matchPos), 1, ...
+                        numPriors, numel(matchPos)) ;
+    tmp = sparsePos * locDerTmp ;
+    locDer(:,:,:,i) = single(tmp) ;
+ 
+    sparseAll = sparse(matchAll, 1:numel(matchAll), 1, ...
+                        numPriors, numel(matchAll)) ;
+    tmp = sparseAll * confDerTmp ;
+    confDer(:,:,:,i) = single(tmp) ;
+  end
+
+  locDer = reshape(permute(locDer, [2 1 3 4]), size(x)) ;
+  confDer = reshape(permute(confDer, [2 1 3 4]), size(v)) ;
+
+  % return derivatives
+  targetPreds = cast(locDer, 'like', x) ; 
+  classPreds = cast(confDer, 'like', v) ; 
+
+end
