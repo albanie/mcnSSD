@@ -7,7 +7,7 @@ function setup_mcnSSD
 
   root = fileparts(mfilename('fullpath')) ;
   addpath(root, [root '/misc'], [root '/matlab']) ;
-  addpath([root '/core'], [root '/pascal'], [root '/pascal/helpers']) ;
+  addpath([root '/core'], [root '/pascal']) ;
   addpath([root '/matlab/utils'], [root '/coco'], [root '/matlab/mex']) ;
 
 % -----------------------------------

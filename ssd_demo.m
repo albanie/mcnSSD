@@ -38,8 +38,8 @@ function ssd_demo(varargin)
     fprintf('Downloading the SSD model ... this may take a while\n') ;
     opts.modelPath = fullfile(vl_rootnn, 'data/models', modelName) ;
     mkdir(fileparts(opts.modelPath)) ;
-    url = sprintf('http://www.robots.ox.ac.uk/~albanie/models/ssd/%s', modelName) ;
-    urlwrite(url, opts.modelPath) ;
+    base = 'http://www.robots.ox.ac.uk/~albanie/models/ssd/%s' ;
+    url = sprintf(base, modelName) ; urlwrite(url, opts.modelPath) ;
   else
     opts.modelPath = paths{ok} ;
   end
@@ -50,8 +50,7 @@ function ssd_demo(varargin)
   net.mode = 'test' ;
 
   % Load test image
-  im = single(imread('misc/test.jpg')) ; 
-  numKeep = 2 ; 
+  im = single(imread('misc/test.jpg')) ; numKeep = 2 ; 
   im = imresize(im, [300 300]) ;
 
   % Evaluate network either on CPU or GPU.
@@ -59,18 +58,14 @@ function ssd_demo(varargin)
     gpuDevice(opts.gpu) ; net.move('gpu') ; im = gpuArray(im) ;
   end
 
-  % Tell the network to store the outputs
-  % of the prediction layer and do a forward pass
+  % Tell the network to store the outputs of the prediction layer 
+  % and do a forward pass
   net.mode = 'test';
   net.vars(end).precious = true ;
   net.eval({'data', im}) ;
 
-  % Gather the predictions from the network,
-  % and sort by confidence
-  preds = net.vars(end).value ;
-
-  % Check the last
-  preds = preds(:,:,:,end) ;
+  % Gather the predictions from the network and sort by confidence
+  preds = net.vars(end).value ; preds = preds(:,:,:,end) ;
   [~, sortedIdx ] = sort(preds(:, 2), 'descend') ;
   preds = preds(sortedIdx, :) ;
 
