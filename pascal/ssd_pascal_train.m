@@ -121,7 +121,6 @@ function ssd_pascal_train(varargin)
   opts.modelOpts.CudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
   opts.modelOpts.sourceModel = fullfile(vl_rootnn, 'data', 'models-import', ...
                                                      'vgg-vd-16-reduced') ;
-
   % configure dataset options
   opts.dataOpts.name = 'pascal' ;
   opts.dataOpts.trainData = '0712' ;
@@ -146,7 +145,7 @@ function ssd_pascal_train(varargin)
   opts.train.derOutputs = derScale ;
 
   % Set learning rates to match caffe implementation
-  warmup = 0.0001 ; steadyLR = 0.001 ; gentleLR = 0.0001 ; vGentleLR = 0.00001 ;
+  steadyLR = 0.001 ; gentleLR = 0.0001 ; vGentleLR = 0.00001 ;
   if opts.dataOpts.zoomAugmentation
     numSteadyEpochs = 155 ; numGentleEpochs = 38 ; numVeryGentleEpochs = 38 ;
   else
@@ -156,7 +155,7 @@ function ssd_pascal_train(varargin)
   steady = steadyLR * ones(1, numSteadyEpochs) ;
   gentle = gentleLR * ones(1, numGentleEpochs) ;
   veryGentle = vGentleLR * ones(1, numVeryGentleEpochs) ;
-  opts.train.learningRate = [warmup steady gentle veryGentle] ;
+  opts.train.learningRate = [steady gentle veryGentle] ;
   opts.train.numEpochs = numel(opts.train.learningRate) ;
   opts.modelOpts.batchSize = opts.train.batchSize ;
 
