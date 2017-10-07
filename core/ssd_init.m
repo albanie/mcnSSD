@@ -139,14 +139,11 @@ function net = ssd_init(opts, varargin)
   sel = 1:modelOpts.numSources ;
   sourceLayers = sourceLayers(sel) ;
 
-  % These ratios are expressed as percentages
+  % NOTE: These ratios are expressed as percentages
   priorOpts = getPriorOpts(sourceLayers, minRatio, maxRatio, first, opts) ;
   priorOpts.inputIm = data ;
   priorOpts.pixelStep = computePixelSteps(sourceLayers{end}, sourceLayers, opts) ;
-
-  % selected by source layer
-  priorOpts.aspectRatios = aspectRatios(sel) ;
-
+  priorOpts.aspectRatios = aspectRatios(sel) ; % selected by source layer
   opts.priorOpts = priorOpts;
 
   predictors = cell(1, numel(sourceLayers)) ;
@@ -154,24 +151,18 @@ function net = ssd_init(opts, varargin)
     predictors{unit} = addMultiBoxLayers(unit, priorOpts, opts) ;
   end
 
-  % Fuse predictions  
-  priorBoxLayers = cellfun(@(x) {x{1}}, predictors) ;
+  priorBoxLayers = cellfun(@(x) {x{1}}, predictors) ;  
+  dim = 1 ; fusedPriors = cat(dim, priorBoxLayers{:}) ;
+  fusedPriors.name = 'mbox_priorbox' ;
 
-  dim = 1 ;
-  fusedPriors = cat(dim, priorBoxLayers{:}) ;
-  fusedPriors.name = 'fusedPriors' ;
-
-  dim = 3 ;
   locLayers = cellfun(@(x) {x{2}}, predictors) ;
-  confLayers = cellfun(@(x) {x{3}}, predictors) ;
-  fusedLocs = cat(dim, locLayers{:}) ;
-  fusedLocs.name = 'fusedLocs' ;
-  fusedConfs = cat(dim, confLayers{:}) ;
-  fusedConfs.name = 'fusedConfs' ;
+  confLayers = cellfun(@(x) {x{3}}, predictors) ; dim = 3 ; 
+  fusedLocs = cat(dim, locLayers{:}) ; fusedLocs.name = 'mbox_loc' ;
+  fusedConfs = cat(dim, confLayers{:}) ; fusedConfs.name = 'mbox_conf' ;
 
-  [multiloss,regloss,confloss] = add_loc_conf_loss(opts,gtBoxes,gtLabels, ...
-                                       fusedPriors,fusedConfs,fusedLocs) ; 
-  all_losses = {regloss, confloss, multiloss} ;
+  multiloss = add_loss(opts, gtBoxes, gtLabels, ...
+                       fusedPriors, fusedConfs, fusedLocs) ; 
+  all_losses = {multiloss} ;
 
   % --------------------------------------------------------
   % Add detection subnetwork to generate mAP during training
@@ -193,13 +184,12 @@ function net = ssd_init(opts, varargin)
   end
   net.meta.normalization.imageSize = repmat(opts.modelOpts.architecture, [1 2]) ;
 
-% -----------------------------------------------------------------------
-function [multiloss,regloss,softmaxlog] = add_loc_conf_loss(...
-                 opts,gtBoxes,gtLabels,fusedPriors,fusedConfs,fusedLocs)
-% -----------------------------------------------------------------------
+% --------------------------------------------------------------------
+function loss = add_loss(opts, gtBoxes, gtLabels, priors, confs, locs)
+% --------------------------------------------------------------------
   % Matching and decoder layers
   [matches, targets, tWeights, boxes] = Layer.create(@vl_nnmatchpriors, ...
-                        {fusedPriors, gtBoxes, gtLabels, ...
+                        {priors, gtBoxes, gtLabels, ...
                         'overlapThreshold', opts.modelOpts.overlapThreshold}, ...
                         'numInputDer', 0) ; 
   matches.name = 'matches' ;
@@ -212,7 +202,7 @@ function [multiloss,regloss,softmaxlog] = add_loc_conf_loss(...
   % is to use a ranking loss to try to enable the use of all negatives in 
   % training. The second is standard OHEM.
   [hardNegs, extendedLabels, cWeights] = Layer.create(@vl_nnhardnegatives, ...
-                            {fusedConfs, gtLabels, matches, ...
+                            {confs, gtLabels, matches, ...
                             'numClasses', opts.modelOpts.numClasses, ...
                             'backgroundLabel', 1, ...
                             'negPosRatio', opts.modelOpts.negPosRatio}, ...
@@ -222,7 +212,7 @@ function [multiloss,regloss,softmaxlog] = add_loc_conf_loss(...
   extendedLabels.name = 'extendedLabels' ;
 
   [tarPreds, classPreds] = Layer.create(@vl_nnmultiboxcoder, ...
-                      {fusedLocs, fusedConfs, matches, hardNegs, gtBoxes, ...
+                      {locs, confs, matches, hardNegs, gtBoxes, ...
                       gtLabels, 'numClasses', opts.modelOpts.numClasses}, ...
                       'numInputDer', 2) ;
   tarPreds.name = 'mbox_loc' ;
@@ -237,11 +227,9 @@ function [multiloss,regloss,softmaxlog] = add_loc_conf_loss(...
                                     'instanceWeights', tWeights}, ...
                                     'numInputDer', 1) ;
   regloss.name = 'loc_loss' ;
-  multiloss = Layer.create(@vl_nnmultiboxloss, {softmaxlog, regloss, ...
+  loss = Layer.create(@vl_nnmultiboxloss, {softmaxlog, regloss, ...
                                    'locWeight', opts.modelOpts.locWeight}) ;
-  multiloss.name = 'mbox_loss' ;
-
-
+  loss.name = 'mbox_loss' ;
 
 % -----------------------------------------------------------------
 function [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts)
@@ -252,67 +240,64 @@ function [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts)
 % (essentially it is computed according to the number of specified 
 % aspect ratios)
 
-numBBoxOffsets = 4 ;
-priorsPerFeature = 1 + boolean(maxSize) + numel(aspectRatios) * 2 ;
-confOut = opts.modelOpts.numClasses * priorsPerFeature ;
-locOut = numBBoxOffsets * priorsPerFeature ;
+  numBBoxOffsets = 4 ;
+  priorsPerFeature = 1 + boolean(maxSize) + numel(aspectRatios) * 2 ;
+  confOut = opts.modelOpts.numClasses * priorsPerFeature ;
+  locOut = numBBoxOffsets * priorsPerFeature ;
 
 % ------------------------------------------------------------------------------
 function priorOpts = getPriorOpts(sourceLayers, minRatio, maxRatio, first, opts) 
 % ------------------------------------------------------------------------------
+  % minimum dimension of input image
+  minDim = opts.modelOpts.architecture ;
 
-% minimum dimension of input image
-minDim = opts.modelOpts.architecture ;
+  % set standard options
+  priorOpts.kernelSize = [3 3] ;
+  priorOpts.permuteOrder = [3 2 1 4] ;
+  priorOpts.flattenAxis = 3 ;
 
-% set standard options
-priorOpts.kernelSize = [3 3] ;
-priorOpts.permuteOrder = [3 2 1 4] ;
-priorOpts.flattenAxis = 3 ;
-
-% Following the paper, the scale for conv4_3 is handled separately
-% when training on VOC0712, so we can compute the step as follows
-step = floor((maxRatio - minRatio) / max((numel(sourceLayers) - 2), 1)) ;
-minSizes = zeros(numel(sourceLayers), 1) ;
-maxSizes = zeros(numel(sourceLayers), 1) ;
-effectiveMax = minRatio + (numel(sourceLayers) - 1) * step ;
-ratios = [first minRatio:step:maxRatio effectiveMax] ;
-for i = 1:numel(ratios) - 1 
+  % Following the paper, the scale for conv4_3 is handled separately
+  % when training on VOC0712, so we can compute the step as follows
+  step = floor((maxRatio - minRatio) / max((numel(sourceLayers) - 2), 1)) ;
+  effectiveMax = minRatio + (numel(sourceLayers) - 1) * step ;
+  ratios = [first minRatio:step:maxRatio effectiveMax] ;
+  for i = 1:numel(ratios) - 1 
     priorOpts.minSizes(i) = minDim * ratios(i) / 100 ;
     priorOpts.maxSizes(i) = minDim * ratios(i + 1) / 100 ;
-end
+  end
 
-priorOpts.flip = true ;
-priorOpts.variance = [0.1 0.1 0.2 0.2]' ;
-priorOpts.sourceLayers = sourceLayers ;
-priorOpts.clip = opts.modelOpts.clipPriors ;
+  priorOpts.flip = true ;
+  priorOpts.variance = [0.1 0.1 0.2 0.2]' ;
+  priorOpts.sourceLayers = sourceLayers ;
+  priorOpts.clip = opts.modelOpts.clipPriors ;
 
-% an offset is used to centre each prior box between  
-% activations in the feature map (see Sec 2.2. of the 
-% SSD paper)
-priorOpts.offset = 0.5 ;
+  % an offset is used to centre each prior box between  
+  % activations in the feature map (see Sec 2.2. of the 
+  % SSD paper)
+  priorOpts.offset = 0.5 ;
 
-% Since the computed prior boxes are identical for a fixed size
-% input, we can cahce them after the first forward pass
-priorOpts.usePriorCaching = true ;
+  % Since the computed prior boxes are identical for a fixed size
+  % input, we can cahce them after the first forward pass
+  priorOpts.usePriorCaching = true ;
 
 % ----------------------------------------------------
 function net = add_conv_stack(net, i, stackOpts, opts) 
 % ----------------------------------------------------
-nonLin = true ; % add nonlinearity
-ks = stackOpts.ks{i}(1) ;
-stride = stackOpts.strides{i}(1,:) ;
-pad = stackOpts.paddings{i}(1,:) ;
+  nonLin = true ; % add nonlinearity
+  ks = stackOpts.ks{i}(1) ;
+  stride = stackOpts.strides{i}(1,:) ;
+  pad = stackOpts.paddings{i}(1,:) ;
 
-kernels = [ks ks stackOpts.channelsIn{i} stackOpts.bottlenecks{i}] ;
-name = sprintf('%s_1', stackOpts.prefix{i}) ;
-net = add_block(net, name, opts, kernels, nonLin, 'stride', stride, 'pad', pad) ; 
-ks = stackOpts.ks{i}(2) ;
-stride = stackOpts.strides{i}(2,:) ;
-pad = stackOpts.paddings{i}(2,:) ;
+  kernels = [ks ks stackOpts.channelsIn{i} stackOpts.bottlenecks{i}] ;
+  name = sprintf('%s_1', stackOpts.prefix{i}) ;
+  net = add_block(net, name, opts, kernels, nonLin, 'stride', stride, 'pad', pad) ; 
+  ks = stackOpts.ks{i}(2) ;
+  stride = stackOpts.strides{i}(2,:) ;
+  pad = stackOpts.paddings{i}(2,:) ;
 
-kernels = [ks ks stackOpts.bottlenecks{i} stackOpts.channelsOut{i}] ;
-name = sprintf('%s_2', stackOpts.prefix{i}) ;
-net = add_block(net, name, opts, kernels, nonLin,'stride',stride, 'pad', pad) ;
+  kernels = [ks ks stackOpts.bottlenecks{i} stackOpts.channelsOut{i}] ;
+  name = sprintf('%s_2', stackOpts.prefix{i}) ;
+  net = add_block(net, name, opts, kernels, nonLin,'stride',stride, 'pad', pad) ;
 
 % ----------------------------------------------
 function net = matchCaffeBiases(net, param)
@@ -375,7 +360,7 @@ function predictors = addMultiBoxLayers(unit, priorOpts, opts)
 function net = add_block(net, name, opts, sz, nonLinearity, varargin)
 % ---------------------------------------------------------------------
 
-filters = Param('value', init_weight(opts, sz, 'single'), 'learningRate', 1) ;
+filters = Param('value', init_weight(sz, 'single'), 'learningRate', 1) ;
 biases = Param('value', zeros(sz(4), 1, 'single'), 'learningRate', 2) ;
 
 net = vl_nnconv(net, filters, biases, varargin{:}, ...
@@ -400,50 +385,42 @@ end
 
 
 % -------------------------------------------------------------------------
-function weights = init_weight(opts, sz, type)
+function weights = init_weight(sz, type)
 % -------------------------------------------------------------------------
 % See K. He, X. Zhang, S. Ren, and J. Sun. Delving deep into
 % rectifiers: Surpassing human-level performance on imagenet
 % classification. CoRR, (arXiv:1502.01852v1), 2015.
 
-sc = sqrt(1/(sz(1)*sz(2)*sz(3))) ;
-%sc = sqrt(2/(sz(1)*sz(2)*sz(4))) ;  
-weights = randn(sz, type)*sc ;
+  sc = sqrt(1/(sz(1)*sz(2)*sz(3))) ;
+  weights = randn(sz, type)*sc ;
 
 % -------------------------------------------------------------------------
 function pixelSteps = computePixelSteps(net, sourceLayers, opts)
 % -------------------------------------------------------------------------
-% compute the pixel steps 
-trunk = Net(net, sourceLayers{1}) ; % include the scale norm layer
-imSz = opts.modelOpts.architecture ;
-inputs = {'data', zeros(imSz, imSz, 3, 1, 'single')} ;
+  % compute the pixel steps 
+  trunk = Net(net, sourceLayers{1}) ; % include the scale norm layer
+  imSz = opts.modelOpts.architecture ;
+  inputs = {'data', zeros(imSz, imSz, 3, 1, 'single')} ;
 
-if opts.modelOpts.batchRenormalization
-  clips = [1 0] ;
-  inputs = {inputs{:}, 'clips', clips}  ;
-end
-
-trunk.eval(inputs, 'forward') ;
-
-for i = 1:numel(sourceLayers)
-  layer = sourceLayers{i} ;
-  feats = trunk.getValue(layer) ;
-  featDim = size(feats, 1) ;
-  pixelSteps(i) = imSz / featDim ;
-end
-
-% In the original SSD implementation, these are mostly "squashed" 
-% into powers of two. However, after consuming some wild herbal tea,
-% I decided that this isn't the way that nature intended, so I 
-% tend to use non-integer steps
-if opts.reproduceSSD
-  switch opts.modelOpts.architecture
-    case 300
-      pixelSteps = [8, 16, 32, 64, 100, 300] ;
-    case 512
-      pixelSteps = [8, 16, 32, 64, 128, 256, 512] ;
-    otherwise
-      error('disable `reproduceSSD` option for non standard architecutres') ;
+  if opts.modelOpts.batchRenormalization
+    clips = [1 0] ; inputs = [inputs, {'clips', clips}]  ;
   end
-end
+
+  trunk.eval(inputs, 'forward') ;
+
+  pixelSteps = zeros(1, numel(sourceLayers)) ;
+  for ii = 1:numel(sourceLayers)
+    layer = sourceLayers{ii} ; feats = trunk.getValue(layer) ;
+    featDim = size(feats, 1) ; pixelSteps(ii) = imSz / featDim ;
+  end
+
+  % In the original SSD implementation, these are mostly "squashed" 
+  % into powers of two. 
+  if opts.reproduceSSD
+    switch opts.modelOpts.architecture
+      case 300, pixelSteps = [8, 16, 32, 64, 100, 300] ;
+      case 512, pixelSteps = [8, 16, 32, 64, 128, 256, 512] ;
+      otherwise, error('disable `reproduceSSD` option for non standard archs') ;
+    end
+  end
 
