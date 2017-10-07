@@ -12,11 +12,15 @@ function ssd_demo(varargin)
 %   `gpu`:: []
 %    Device on which to run network 
 %
+%   `wrapper`:: 'autonn'
+%    The matconvnet wrapper to be used (both dagnn and autonn are supported) 
+%
 % Copyright (C) 2017 Samuel Albanie
 % Licensed under The MIT License [see LICENSE.md for details]
 
   opts.gpu = [] ;
   opts.modelPath = '' ;
+  opts.wrapper = 'autonn' ;
   opts = vl_argparse(opts, varargin) ;
 
   % The network is trained to prediction occurences
@@ -44,28 +48,28 @@ function ssd_demo(varargin)
     opts.modelPath = paths{ok} ;
   end
 
-  % Load the network and put it in test mode.
-  net = load(opts.modelPath) ;
-  net = dagnn.DagNN.loadobj(net);
-  net.mode = 'test' ;
+  % Load the network with the chosen wrapper
+  net = loadModel(opts) ;
 
   % Load test image
   im = single(imread('misc/test.jpg')) ; numKeep = 2 ; 
-  im = imresize(im, [300 300]) ;
+  im = imresize(im, net.meta.normalization.imageSize(1:2)) ;
 
   % Evaluate network either on CPU or GPU.
   if numel(opts.gpu) > 0
     gpuDevice(opts.gpu) ; net.move('gpu') ; im = gpuArray(im) ;
   end
 
-  % Tell the network to store the outputs of the prediction layer 
-  % and do a forward pass
-  net.mode = 'test';
-  net.vars(end).precious = true ;
-  net.eval({'data', im}) ;
+  % set inputs and run network
+  switch opts.wrapper
+    case 'dagnn' 
+      net.eval({'data', im}) ;
+      preds = net.vars(end).value ;
+    case 'autonn'
+      net.eval({'data', im}, 'test') ;
+      preds = net.getValue('detection_out') ;
+  end
 
-  % Gather the predictions from the network and sort by confidence
-  preds = net.vars(end).value ; preds = preds(:,:,:,end) ;
   [~, sortedIdx ] = sort(preds(:, 2), 'descend') ;
   preds = preds(sortedIdx, :) ;
 
@@ -96,3 +100,20 @@ function ssd_demo(varargin)
   
   % Free up the GPU allocation
   if numel(opts.gpu) > 0, net.move('cpu') ; end
+
+% ----------------------------
+function net = loadModel(opts)
+% ----------------------------
+  net = load(opts.modelPath) ; 
+  if ~isfield(net, 'forward') % dagnn loader
+    net = dagnn.DagNN.loadobj(net) ;
+    switch opts.wrapper
+      case 'dagnn' 
+        net.mode = 'test' ; 
+      case 'autonn'
+        out = Layer.fromDagNN(net, @extras_autonn_custom_fn) ; 
+        net = Net(out{:}) ;
+    end
+  else % load directly using autonn
+    net = Net(net) ;
+  end
