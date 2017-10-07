@@ -1,409 +1,251 @@
-function net = ssd_init(opts)
+function net = ssd_init(opts, varargin)
 % SSD_INIT Initialize a Single Shot Multibox Detector Network
 %   NET = SSD_INIT randomly initializes an SSD network architecture
+%
+% Copyright (C) 2017 Samuel Albanie 
+% Licensed under The MIT License [see LICENSE.md for details]
 
-% for reproducibility, fix the seed
-rng(0, 'twister') ;
+% If set, this will force the layer pixel steps to exactly match 
+% SSD (useful as a sanity check, but not necessarily ideal for 
+% performance)
+  opts.reproduceSSD = false ;
+  opts = vl_argparse(opts, varargin) ;
 
-% load trunk model
-net = ssd_zoo('vgg-vd-16-reduced') ;
+  switch opts.modelOpts.architecture
+    case 128, net = ssd_mini_init(opts) ; return ;
+    case 300, numExtraConvs = 5 ; ns = 5 ;
+    case 500, numExtraConvs = 5 ; ns = 6 ;
+    case 512, numExtraConvs = 5 ; ns = 6 ;
+    otherwise, error('arch %d unrecognised', opts.modelOpts.architecture) ;
+  end
 
-% -------------------------------------------------------------
-% Set meta properties of net
-% -------------------------------------------------------------
+  % If the number of "source Layers" used for predictions has not been set,
+  % then we use an appropriate number for each architecture
+  if ~isfield(opts.modelOpts, 'numSources'), opts.modelOpts.numSources = ns ; end
 
-switch opts.modelOpts.architecture
-    case 300
-        imSize = [300 300] ;
-        addExtraConv = false ;
-    case 500
-        imSize = [500 500] ;
-        addExtraConv = true ;
-    case 512
-        imSize = [512 512] ;
-        addExtraConv = true ;
-    otherwise
-        error('architecture %d is not recognised', ...
-                             opts.modelOpts.architecture) ;
-end
+  % load pre-trained base network (so far, only tested model is vgg-16-reduced)
+  tmp = vl_simplenn_tidy(load(opts.modelOpts.sourceModel)) ;
+  dag = dagnn.DagNN.fromSimpleNN(tmp) ;
 
-net.meta.normalization.imageSize = imSize ;
+  % modify trunk biases learnning rate and weight decay to match caffe 
+  params = {'conv1_1b','conv1_2b','conv2_1b','conv2_2b','conv3_1b', ...
+            'conv3_2b','conv3_3b','conv4_1b','conv4_2b','conv4_3b' ...
+            'conv5_1b','conv5_2b','conv5_3b','fc6b','fc7b'} ;
+  for i = 1:length(params), dag = matchCaffeBiases(dag, params{i}) ; end
 
-% -------------------------------------------------------------
-% Network truncation
-% -------------------------------------------------------------
-% modify trunk biases learnning rate and weight decay to match caffe 
-params = {'conv1_1b', ...
-          'conv1_2b', ...
-          'conv2_1b', ...
-          'conv2_2b', ... 
-          'conv3_1b', ...
-          'conv3_2b', ...
-          'conv3_3b', ...
-          'conv4_1b', ...
-          'conv4_2b', ...
-          'conv4_3b' ...
-          'conv5_1b', ...
-          'conv5_2b', ...
-          'conv5_3b' ...
-          'fc6b', ...
-          'fc7b' ...
-          } ;
-for i = 1:length(params)
-    net = matchCaffeBiases(net, params{i}) ;
-end
+  % update fc6 to match SSD
+  dag.layers(dag.getLayerIndex('fc6')).block.dilate = [6 6] ;
+  dag.layers(dag.getLayerIndex('fc6')).block.pad = [6 6] ;
 
-% update fc6 to match SSD
-net.layers(net.getLayerIndex('fc6')).block.dilate = [6 6] ;
-net.layers(net.getLayerIndex('fc6')).block.pad = [6 6] ;
+  % Truncate the layers following relu7 and rename input variable
+  dag.removeLayer('fc8') ; dag.removeLayer('prob') ;
+  dag.renameVar('x0', 'data') ;
 
-% Truncate the layers following relu7
-net.removeLayer('fc8') ;
-net.removeLayer('prob') ;
+  % Alter the pooling to match SSD
+  dag.layers(dag.getLayerIndex('pool5')).block.stride = [1 1] ;
+  dag.layers(dag.getLayerIndex('pool5')).block.poolSize = [3 3] ;
+  dag.layers(dag.getLayerIndex('pool5')).block.pad = [1 1 1 1] ;
 
-% rename input variable to 'data'
-net.renameVar('x0', 'data') ;
+ % configure inputs
+  data = Input('data') ;
+  gtBoxes = Input('targets') ;
+  gtLabels = Input('labels') ;
 
-% Alter the pooling to match SSD
-net.layers(net.getLayerIndex('pool5')).block.stride = [1 1] ;
-net.layers(net.getLayerIndex('pool5')).block.poolSize = [3 3] ;
-net.layers(net.getLayerIndex('pool5')).block.pad = [1 1 1 1] ;
+  % used by tukey and mAP layer
+  epoch = Input('epoch') ;
 
-% --------------------------------------------------------------
-% Architectural modifications - add new conv layer stacks
-% --------------------------------------------------------------
+  % additional input required by batch renormalization
+  if opts.modelOpts.batchRenormalization
+    clips = Input('clips') ; 
+    renormLR = {'learningRate', [2 1 opts.modelOpts.alpha]} ;
+    opts.renormLR = renormLR ;
+    opts.clips= clips;
+  end
 
-prefix = 'conv6' ;
-inLayer = 'relu7' ;
-channelsIn = 1024 ;
-bottleneck = 256 ;
-channelsOut = 512 ;
-kernelSizes = [1 3] ;
-paddings = [0 0 0 0 ; 1 1 1 1] ;
-strides = [ 1 1 ; 2 2 ] ;
-net = addConvStack(net, prefix, inLayer, channelsIn, bottleneck, ...
-                   channelsOut, kernelSizes, paddings, strides) ; 
+  % convert to autonn
+  stored = Layer.fromDagNN(dag) ; net = stored{1} ;
 
-prefix = 'conv7' ;
-inLayer = 'conv6_2_relu' ;
-channelsIn = 512 ;
-bottleneck = 128 ;
-channelsOut = 256 ;
-kernelSizes = [1 3] ;
-paddings = [0 0 0 0 ; 1 1 1 1] ;
-strides = [ 1 1 ; 2 2 ] ;
-net = addConvStack(net, prefix, inLayer, channelsIn, bottleneck, ...
-                   channelsOut, kernelSizes, paddings, strides) ; 
+  % for reproducibility, fix the seed
+  rng(0) ;
 
-prefix = 'conv8' ;
-inLayer = 'conv7_2_relu' ;
-finalLayer = 'conv8_2_relu' ;
-channelsIn = 256 ;
-bottleneck = 128 ;
-channelsOut = 256 ;
-kernelSizes = [1 3] ;
-paddings = [0 0 0 0 ; 0 0 0 0] ;
-strides = [ 1 1 ; 1 1 ] ;
-net = addConvStack(net, prefix, inLayer, channelsIn, bottleneck, ...
-                   channelsOut, kernelSizes, paddings, strides) ; 
+  % add normalization layer 
+  base = net.find('relu4_3') ;
+  weight = Param('value', ones(1,1,512, 'single') * 20, 'learningRate', 1) ;
+  scaleNorm = Layer.create(@vl_nnscalenorm, {base{1}, weight}) ;
+  scaleNorm.name = 'conv4_3_norm' ;
 
-prefix = 'conv9' ;
-inLayer = 'conv8_2_relu' ;
-finalLayer = 'conv9_2_relu' ;
-channelsIn = 256 ;
-bottleneck = 128 ;
-channelsOut = 256 ;
-kernelSizes = [1 3] ;
-paddings = [0 0 0 0 ; 0 0 0 0] ;
-strides = [ 1 1 ; 1 1 ] ;
-net = addConvStack(net, prefix, inLayer, channelsIn, bottleneck, ...
-                   channelsOut, kernelSizes, paddings, strides) ; 
+  % set scaleNorm and fc7_relu as the first and second "source layers"
+  sourceLayers = {scaleNorm, net} ; 
 
-if addExtraConv
-    prefix = 'conv10' ;
-    inLayer = 'conv9_2_relu' ;
-    finalLayer = 'conv10_2_relu' ;
-    channelsIn = 256 ;
-    bottleneck = 128 ;
-    channelsOut = 256 ;
-    kernelSizes = [1 4] ;
-    paddings = [0 0 0 0 ; 1 1 1 1] ;
-    strides = [ 1 1 ; 1 1 ] ;
-    net = addConvStack(net, prefix, inLayer, channelsIn, bottleneck, ...
-                   channelsOut, kernelSizes, paddings, strides) ; 
-end
+  % ------------------------------------------------------------
+  %                                    add new conv layer stacks
+  % ------------------------------------------------------------
 
-% Add normalization layer 
-layerName = 'conv4_3_norm' ;
-initialScale = single(20) ;
-layer = dagnn.Normalize() ;
-inputs = net.layers(net.getLayerIndex('relu4_3')).outputs ;
-outputs = layerName ;
-params = {'conv4_3_norm_scale'} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-net.params(net.getParamIndex(params)).value = ones(1,1,512) * initialScale ;
+  % Each additional conv stack is a form of "bottleneck" unit of 
+  % the form:
+  %
+  %     conv->relu->conv->relu
+  %
+  % Different conv stacks take different padding, stride and kernel
+  % configurations. Each option is given as a 2 x n array, where the
+  % first row of options are applied to the first conv in the stack,
+  % and the second row of options is applied to the second row 
 
-% -------------------------------------
-% Compute multibox prior parameters
-% -------------------------------------
+  % padding configs
+  pA = [ 0 0 0 0 ; 1 1 1 1 ] ;
+  pB = [ 0 0 0 0 ; 0 0 0 0 ] ;
 
-% minimum dimension of input image
-minDim = imSize(1) ;
+  % stride configs:
+  sA = [ 1 1 ; 2 2 ] ;
+  sB = [ 1 1 ; 1 1 ] ;
 
-switch opts.modelOpts.architecture
-    case 300
+  % kernel sizes (e.g. kA implies 1x1 kernels followed by 3x3 kernels)
+  kA = [1 ; 3] ;
+  kB = [1 ; 4] ;
 
-        % The feature maps which from which the prior box layers are 
-        % constructed have the following sizes:
-        sourceLayers = {'conv4_3_norm', ... % 38 x 38
-                        'fc7',  ...         % 19 x 19
-                        'conv6_2', ...      % 10 x 10
-                        'conv7_2', ...      % 5 x 5 
-                        'conv8_2',  ...     % 3 x 3
-                        'conv9_2'} ;        % 1 x 1
+  % new layers
+  stackOpts.prefix = {'conv6', 'conv7', 'conv8', 'conv9', 'conv10'} ;
+  stackOpts.channelsIn =  {1024, 512, 256, 256, 256} ;
+  stackOpts.bottlenecks = {256, 128, 128, 128, 128} ;
+  stackOpts.channelsOut = {512, 256, 256, 256, 256} ;
+  stackOpts.paddings = {pA, pA, pB, pB, pA} ;
+  stackOpts.strides = {sA, sA, sB, sB, sB} ;
+  stackOpts.ks = {kA, kA, kA, kA, kB} ;
 
-        % These ratios are expressed as percentages
-        minRatio = 20 ; 
-        maxRatio = 90 ;
+  for i = 1:numExtraConvs
+    net = add_conv_stack(net, i, stackOpts, opts) ;
+    sourceLayers{end+1} = net ; %#ok
+  end
 
-        % Following the paper, the scale for conv4_3 is handled separately
-        % when training on VOC0712, so we can compute the step as follows
-        step = floor((maxRatio - minRatio) / (numel(sourceLayers(2:end)) - 1)) ;
 
-        minSizes = zeros(numel(sourceLayers), 1) ;
-        maxSizes = zeros(numel(sourceLayers), 1) ;
+  % --------------------------------------------------------------------
+  %                                    compute multibox prior parameters
+  % --------------------------------------------------------------------
+  % select number of source layers and define the prior tiling. 
+  % The size of prior boxes are linearly spaced between each conv,
+  % with the exception of the first set of priors, which is defined
+  % separately (as "first")
+  switch opts.modelOpts.architecture
+    case 300                                         
+      minRatio = 20 ; maxRatio = 90 ; first = 10 ; % standard SSD-300
+      aspectRatios = {2, [2, 3], [2, 3], [2, 3], 2, 2} ;
+    case {512, 513}
+      minRatio = 15 ; maxRatio = 90 ; first = 7 ; % standard SSD-512
+      aspectRatios = {2, [2, 3], [2, 3], [2, 3], [2, 3], 2, 2} ;
+    otherwise, error('unrecognised setup %s', opts.modelOpts.numSources) ;
+  end
 
-        effectiveMax = minRatio + numel(sourceLayers(2:end)) * step ;
-        ratios = [10 minRatio:step:maxRatio effectiveMax] ;
+  modelOpts.numSources = numel(aspectRatios) ;
+  sel = 1:modelOpts.numSources ;
+  sourceLayers = sourceLayers(sel) ;
 
-        for i = 1:numel(ratios) - 1 
-            minSizes(i) = minDim * ratios(i) / 100 ;
-            maxSizes(i) = minDim * ratios(i + 1) / 100 ;
-        end
+  % These ratios are expressed as percentages
+  priorOpts = getPriorOpts(sourceLayers, minRatio, maxRatio, first, opts) ;
+  priorOpts.inputIm = data ;
+  priorOpts.pixelStep = computePixelSteps(sourceLayers{end}, sourceLayers, opts) ;
 
-        % note: certain layers use fewer aspect ratios (just 1, 1/2, 2/1)
-        aspectRatios = { [2], ... 
-                         [2, 3], ...
-                         [2, 3], ...
-                         [2, 3], ...
-                         [2], ...
-                         [2] } ;
+  % selected by source layer
+  priorOpts.aspectRatios = aspectRatios(sel) ;
 
-        steps = [8, 16, 32, 64, 100, 300] ;
+  opts.priorOpts = priorOpts;
 
-    case 512
+  predictors = cell(1, numel(sourceLayers)) ;
+  for unit = 1:numel(sourceLayers)
+    predictors{unit} = addMultiBoxLayers(unit, priorOpts, opts) ;
+  end
 
-        % The feature maps which from which the prior box layers are 
-        % constructed have the following sizes:
-        sourceLayers = {'conv4_3_norm', ... % 64 x 64
-                        'fc7',  ...         % 32 x 32
-                        'conv6_2', ...      % 16 x 16
-                        'conv7_2', ...      % 8 x 8 
-                        'conv8_2',  ...     % 4 x 4
-                        'conv9_2', ...      % 2 x 2
-                        'conv10_2'} ;       % 1 x 1
+  % Fuse predictions  
+  priorBoxLayers = cellfun(@(x) {x{1}}, predictors) ;
 
-        % These ratios are expressed as percentages
-        minRatio = 15 ; 
-        maxRatio = 90 ;
+  dim = 1 ;
+  fusedPriors = cat(dim, priorBoxLayers{:}) ;
+  fusedPriors.name = 'fusedPriors' ;
 
-        step = floor((maxRatio - minRatio) / (numel(sourceLayers(2:end)) - 1)) ;
+  dim = 3 ;
+  locLayers = cellfun(@(x) {x{2}}, predictors) ;
+  confLayers = cellfun(@(x) {x{3}}, predictors) ;
+  fusedLocs = cat(dim, locLayers{:}) ;
+  fusedLocs.name = 'fusedLocs' ;
+  fusedConfs = cat(dim, confLayers{:}) ;
+  fusedConfs.name = 'fusedConfs' ;
 
-        minSizes = zeros(numel(sourceLayers), 1) ;
-        maxSizes = zeros(numel(sourceLayers), 1) ;
+  [multiloss,regloss,confloss] = add_loc_conf_loss(opts,gtBoxes,gtLabels, ...
+                                       fusedPriors,fusedConfs,fusedLocs) ; 
+  all_losses = {regloss, confloss, multiloss} ;
 
-        effectiveMax = minRatio + numel(sourceLayers(2:end)) * step ;
-        ratios = [7 minRatio:step:maxRatio effectiveMax] ;
+  % --------------------------------------------------------
+  % Add detection subnetwork to generate mAP during training
+  % --------------------------------------------------------
+  % Note: this also means that at deployment time, we can simply
+  % prune the training branches. However, it slows down training.
+  if opts.track_map
+    mAP = ssd_add_map(opts,fusedConfs,fusedLocs,fusedPriors,...
+                                      gtLabels,gtBoxes,epoch,'');
+   all_losses{end+1} = mAP ;
+  end
 
-        for i = 1:numel(ratios) - 1 
-            minSizes(i) = minDim * ratios(i) / 100 ;
-            maxSizes(i) = minDim * ratios(i + 1) / 100 ;
-        end
+  net = Net(all_losses) ;
+  if ~isempty(dag.meta.normalization.averageImage)
+    net.meta.normalization.averageImage = dag.meta.normalization.averageImage ;
+  else
+    rgb = [122.771, 115.9465, 102.9801] ; 
+    net.meta.normalization.averageImage = permute(rgb, [3 1 2]) ;
+  end
+  net.meta.normalization.imageSize = repmat(opts.modelOpts.architecture, [1 2]) ;
 
-        aspectRatios = { [2], ... 
-                         [2, 3], ...
-                         [2, 3], ...
-                         [2, 3], ...
-                         [2, 3], ...
-                         [2], ...
-                         [2] } ;
+% -----------------------------------------------------------------------
+function [multiloss,regloss,softmaxlog] = add_loc_conf_loss(...
+                 opts,gtBoxes,gtLabels,fusedPriors,fusedConfs,fusedLocs)
+% -----------------------------------------------------------------------
+  % Matching and decoder layers
+  [matches, targets, tWeights, boxes] = Layer.create(@vl_nnmatchpriors, ...
+                        {fusedPriors, gtBoxes, gtLabels, ...
+                        'overlapThreshold', opts.modelOpts.overlapThreshold}, ...
+                        'numInputDer', 0) ; 
+  matches.name = 'matches' ;
+  targets.name = 'targets' ;
+  tWeights.name = 'tWeights' ;
+  boxes.name = 'boxes' ;
+  
+  % sample weighting
+  % There are a couple of methods for doing sample weighting. THe first is
+  % is to use a ranking loss to try to enable the use of all negatives in 
+  % training. The second is standard OHEM.
+  [hardNegs, extendedLabels, cWeights] = Layer.create(@vl_nnhardnegatives, ...
+                            {fusedConfs, gtLabels, matches, ...
+                            'numClasses', opts.modelOpts.numClasses, ...
+                            'backgroundLabel', 1, ...
+                            'negPosRatio', opts.modelOpts.negPosRatio}, ...
+                            'numInputDer', 0) ;
+  hardNegs.name = 'hardNegs' ;
+  cWeights.name = 'cWeights' ;
+  extendedLabels.name = 'extendedLabels' ;
 
-        steps = [8, 16, 32, 64, 128, 256, 512] ;
-end
+  [tarPreds, classPreds] = Layer.create(@vl_nnmultiboxcoder, ...
+                      {fusedLocs, fusedConfs, matches, hardNegs, gtBoxes, ...
+                      gtLabels, 'numClasses', opts.modelOpts.numClasses}, ...
+                      'numInputDer', 2) ;
+  tarPreds.name = 'mbox_loc' ;
+  classPreds.name = 'mbox_conf' ;
 
-flip = true ;
-clip = opts.modelOpts.clipPriors ;
-variances = [0.1 0.1 0.2 0.2]' ;
+  % Loss layers
+  softmaxlog = Layer.create(@vl_nnloss, {classPreds, extendedLabels, ... 
+                                        'instanceWeights', cWeights}, ...
+                                         'numInputDer', 1) ;
+  softmaxlog.name = 'conf_loss' ;
+  regloss = Layer.create(@vl_nnhuberloss, {tarPreds, targets, ...
+                                    'instanceWeights', tWeights}, ...
+                                    'numInputDer', 1) ;
+  regloss.name = 'loc_loss' ;
+  multiloss = Layer.create(@vl_nnmultiboxloss, {softmaxlog, regloss, ...
+                                   'locWeight', opts.modelOpts.locWeight}) ;
+  multiloss.name = 'mbox_loss' ;
 
-% an offset is used to centre each prior box between  
-% activations in the feature map (see Sec 2.2. of the 
-% SSD paper)
-offset = 0.5 ;
 
-% Since the computed prior boxes are identical for a fixed size
-% input, we can cahce them after the first forward pass
-usePriorCaching = true ;
 
-% -------------------------------------
-% Construct multibox prior units
-% -------------------------------------
-unit = 1 ;
-prefix = 'conv4_3_norm' ;
-inLayerName = 'conv4_3_norm' ;
-channelsIn = 512 ;
-[confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                        maxSizes(unit), aspectRatios{unit}, flip, ...
-                        clip, steps(unit), offset, variances, ...
-                        channelsIn, confOut, locOut, usePriorCaching) ;
-
-unit = 2 ;
-prefix = 'fc7' ;
-inLayerName = 'relu7' ;
-channelsIn = 1024 ;
-[confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                        maxSizes(unit), aspectRatios{unit}, flip, ...
-                        clip, steps(unit), offset, variances, ...
-                        channelsIn, confOut, locOut, usePriorCaching) ;
-
-unit = 3 ;
-prefix = 'conv6_2' ;
-inLayerName = 'conv6_2_relu' ;
-channelsIn = 512 ;
-[confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                        maxSizes(unit), aspectRatios{unit}, flip, ...
-                        clip, steps(unit), offset, variances, ...
-                        channelsIn, confOut, locOut, usePriorCaching) ;
-
-unit = 4 ;
-prefix = 'conv7_2' ;
-inLayerName = 'conv7_2_relu' ;
-channelsIn = 256 ;
-[confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                        maxSizes(unit), aspectRatios{unit}, flip, ...
-                        clip, steps(unit), offset, variances, ...
-                        channelsIn, confOut, locOut, usePriorCaching) ;
-
-unit = 5 ;
-prefix = 'conv8_2' ;
-inLayerName = 'conv8_2_relu' ;
-channelsIn = 256 ;
-[confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                        maxSizes(unit), aspectRatios{unit}, flip, ...
-                        clip, steps(unit), offset, variances, ...
-                        channelsIn, confOut, locOut, usePriorCaching) ;
-
-unit = 6 ;
-prefix = 'conv9_2' ;
-inLayerName = 'conv9_2_relu' ;
-channelsIn = 256 ;
-[confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                        maxSizes(unit), aspectRatios{unit}, flip, ...
-                        clip, steps(unit), offset, variances, ...
-                        channelsIn, confOut, locOut, usePriorCaching) ;
-
-if addExtraConv
-    unit = 7 ;
-    prefix = 'conv10_2' ;
-    inLayerName = 'conv10_2_relu' ;
-    channelsIn = 256 ;
-    [confOut, locOut] = getOutSize(maxSizes(unit), aspectRatios{unit}, opts) ;
-    net = addMultiBoxLayers(net, prefix, inLayerName, minSizes(unit), ...
-                            maxSizes(unit), aspectRatios{unit}, flip, ...
-                            clip, steps(unit), offset, variances, ...
-                            channelsIn, confOut, locOut, usePriorCaching) ;
-end
-
-keyboard
-net.conserveMemory = 0 ;
-net.eval({'data', zeros(512, 512, 3, 'single')}) ;
-for ii = 1:numel(net.layers)
-  name = net.layers(ii).name ;
-  out = net.vars(net.getVarIndex(net.layers(ii).outputs)).value ;
-  sz = size(out) ;
-  fprintf('size: [%dx%dx%d], %s\n', size(out, 1), size(out, 2), ...
-                                size(out, 3), name) ;
-end
-
-% -------------------------------------
-% Fuse predictions  
-% -------------------------------------
-
-layerName = 'mbox_loc' ;
-fuseType = 'loc_flat' ;
-axis = 3 ;
-net = addFusionLayer(net, layerName, fuseType, sourceLayers, axis) ;
-
-layerName = 'mbox_conf' ;
-fuseType = 'conf_flat' ;
-axis = 3 ;
-net = addFusionLayer(net, layerName, fuseType, sourceLayers, axis) ;
-
-layerName = 'mbox_priorbox' ;
-fuseType = 'priorbox' ;
-axis = 1 ;
-net = addFusionLayer(net, layerName, fuseType, sourceLayers, axis) ;
-
-% ----------------------------------------------------------------
-% Decoder layer
-% ----------------------------------------------------------------
-
-% Decoder layer -> converts predictions into happiness and rainbows
-layerName = 'mbox_coder' ;
-layer = dagnn.MultiboxCoder('backgroundLabel', 1,  ...
-                            'negOverlap', 0.5, ...
-                            'overlapThreshold', 0.5, ...
-                            'negPosRatio', 3, ...
-                            'numClasses', opts.modelOpts.numClasses) ;
-inputLayers = {'mbox_loc', 'mbox_conf', 'mbox_priorbox'} ;
-inputs = cellfun(@(x) net.layers(net.getLayerIndex(x)).outputs{1}, ...
-                    inputLayers, 'UniformOutput', false) ;
-inputs = horzcat(inputs, 'targets', 'labels') ;
-outputs = {'loc_preds', 'loc_labels', 'conf_preds', ...
-           'conf_labels', 'loc_weights', 'conf_weights'} ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-% ----------------------------------------------------------------
-% Loss layers
-% ----------------------------------------------------------------
-% Two losses are used
-
-layerName = 'class_loss' ;
-layer = dagnn.UnnormalizedLoss() ;
-inputs = { 'conf_preds', 'conf_labels', 'conf_weights'} ;
-outputs = {'class_loss'} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-layerName = 'loc_loss' ;
-layer = dagnn.HuberLoss() ;
-inputs = { 'loc_preds', 'loc_labels', 'loc_weights'} ;
-outputs = {'loc_loss'} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-layerName = 'mbox_loss' ;
-layer = dagnn.MultiboxLoss() ;
-inputs = { 'class_loss', 'loc_loss'} ;
-outputs = {'mbox_loss'} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-% ----------------------------------------------
-function net = matchCaffeBiases(net, param)
-% ----------------------------------------------
-% set the learning rate and weight decay of the 
-% convolution biases to match caffe
-
-net.params(net.getParamIndex(param)).learningRate = 2 ;
-net.params(net.getParamIndex(param)).weightDecay = 0 ;
-
-% -------------------------------------------------------
+% -----------------------------------------------------------------
 function [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts)
-% -------------------------------------------------------
+% -----------------------------------------------------------------
 % THe filters must produce a prediction for each of the prior
 % boxes associated with a source feature layer.  The number of 
 % prior boxes per feature is explained in detail in the SSD paper 
@@ -411,207 +253,197 @@ function [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts)
 % aspect ratios)
 
 numBBoxOffsets = 4 ;
-priorsPerFeature = 1 + logical(maxSize) + numel(aspectRatios) * 2 ;
-confOut = opts.modelOpts.numClasses *  priorsPerFeature ;
-locOut = numBBoxOffsets *  priorsPerFeature ;
+priorsPerFeature = 1 + boolean(maxSize) + numel(aspectRatios) * 2 ;
+confOut = opts.modelOpts.numClasses * priorsPerFeature ;
+locOut = numBBoxOffsets * priorsPerFeature ;
 
-% -----------------------------------------------------------------------------
-function net = addConvStack(net, prefix, prevLayer, channelsIn, bottleneck, ...
-                            channelsOut, kernelSizes, paddings, strides) 
-% -----------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
+function priorOpts = getPriorOpts(sourceLayers, minRatio, maxRatio, first, opts) 
+% ------------------------------------------------------------------------------
 
-layerName = sprintf('%s_1', prefix) ;
-ks = kernelSizes(1) ; 
-sz = [ks ks channelsIn bottleneck] ;
-layer = dagnn.Conv('size', sz, ...
-                    'pad', paddings(1,:), ...
-                    'stride', strides(1,:), ...
-                    'hasBias', true) ;
-inputs = net.layers(net.getLayerIndex(prevLayer)).outputs ;
-outputs = layerName ;
-params = {sprintf('%s_1f', prefix), sprintf('%s_1b', prefix)} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-net = init_weights(net, layerName, ks, channelsIn, bottleneck) ;
+% minimum dimension of input image
+minDim = opts.modelOpts.architecture ;
+
+% set standard options
+priorOpts.kernelSize = [3 3] ;
+priorOpts.permuteOrder = [3 2 1 4] ;
+priorOpts.flattenAxis = 3 ;
+
+% Following the paper, the scale for conv4_3 is handled separately
+% when training on VOC0712, so we can compute the step as follows
+step = floor((maxRatio - minRatio) / max((numel(sourceLayers) - 2), 1)) ;
+minSizes = zeros(numel(sourceLayers), 1) ;
+maxSizes = zeros(numel(sourceLayers), 1) ;
+effectiveMax = minRatio + (numel(sourceLayers) - 1) * step ;
+ratios = [first minRatio:step:maxRatio effectiveMax] ;
+for i = 1:numel(ratios) - 1 
+    priorOpts.minSizes(i) = minDim * ratios(i) / 100 ;
+    priorOpts.maxSizes(i) = minDim * ratios(i + 1) / 100 ;
+end
+
+priorOpts.flip = true ;
+priorOpts.variance = [0.1 0.1 0.2 0.2]' ;
+priorOpts.sourceLayers = sourceLayers ;
+priorOpts.clip = opts.modelOpts.clipPriors ;
+
+% an offset is used to centre each prior box between  
+% activations in the feature map (see Sec 2.2. of the 
+% SSD paper)
+priorOpts.offset = 0.5 ;
+
+% Since the computed prior boxes are identical for a fixed size
+% input, we can cahce them after the first forward pass
+priorOpts.usePriorCaching = true ;
+
+% ----------------------------------------------------
+function net = add_conv_stack(net, i, stackOpts, opts) 
+% ----------------------------------------------------
+nonLin = true ; % add nonlinearity
+ks = stackOpts.ks{i}(1) ;
+stride = stackOpts.strides{i}(1,:) ;
+pad = stackOpts.paddings{i}(1,:) ;
+
+kernels = [ks ks stackOpts.channelsIn{i} stackOpts.bottlenecks{i}] ;
+name = sprintf('%s_1', stackOpts.prefix{i}) ;
+net = add_block(net, name, opts, kernels, nonLin, 'stride', stride, 'pad', pad) ; 
+ks = stackOpts.ks{i}(2) ;
+stride = stackOpts.strides{i}(2,:) ;
+pad = stackOpts.paddings{i}(2,:) ;
+
+kernels = [ks ks stackOpts.bottlenecks{i} stackOpts.channelsOut{i}] ;
+name = sprintf('%s_2', stackOpts.prefix{i}) ;
+net = add_block(net, name, opts, kernels, nonLin,'stride',stride, 'pad', pad) ;
+
+% ----------------------------------------------
+function net = matchCaffeBiases(net, param)
+% ----------------------------------------------
+  % set the learning rate and weight decay of the 
+  % convolution biases to match caffe
+  net.params(net.getParamIndex(param)).learningRate = 2 ;
+  net.params(net.getParamIndex(param)).weightDecay = 0 ;
+
+% ------------------------------------------------------------
+function predictors = addMultiBoxLayers(unit, priorOpts, opts)
+% ------------------------------------------------------------
+  maxSize = priorOpts.maxSizes(unit) ;
+  aspectRatios = priorOpts.aspectRatios{unit} ;
+  [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts) ;
+
+  srcFeatures = priorOpts.sourceLayers{unit} ;
+  priorBox = Layer.create(@vl_nnpriorbox, {srcFeatures, priorOpts.inputIm, ...
+                          'aspectRatios', aspectRatios, ...
+                          'pixelStep', priorOpts.pixelStep(unit), ...
+                          'variance', priorOpts.variance, ...
+                          'minSize', priorOpts.minSizes(unit), ...
+                          'maxSize', priorOpts.maxSizes(unit), ...
+                          'offset', priorOpts.offset, ...
+                          'flip', priorOpts.flip, ...
+                          'clip', priorOpts.clip}, ...
+                          'numInputDer', 0) ;
+  priorBox.name = sprintf('%s_priorbox', srcFeatures.name) ;
+
+  % if the current layer is a pooling layer, we need to search back through
+  % to the last conv layer to determine the current number of channels
+  prev = srcFeatures.find(@vl_nnconv, -1) ;
+  channelsIn = size(prev.inputs{3}.value, 1) ;
+  assert(3 <= channelsIn && channelsIn <= 1024, 'unexpected num. of channels') ;
+
+  % we do not include a non linear component in the prediction blocks
+  nonLin = false ; 
+  ks = priorOpts.kernelSize(1:2) ; pad = 1 ;
+
+  % add bbox regression predictors
+  sz = [ks channelsIn locOut] ;
+  name = sprintf('%s_loc', srcFeatures.name) ;
+  loc = add_block(srcFeatures, name, opts, sz, nonLin, 'stride', 1, 'pad', pad) ;
+  perm = Layer.create(@permute, {loc, priorOpts.permuteOrder}) ;
+  perm.name = sprintf('%s_loc_perm', srcFeatures.name) ;
+  flatLoc = Layer.create(@vl_nnflatten, {perm, priorOpts.flattenAxis}) ;
+  flatLoc.name = sprintf('%s_loc_flat', srcFeatures.name) ;
+
+  % add class confidence predictors
+  sz = [ks channelsIn confOut] ;
+  name = sprintf('%s_conf', srcFeatures.name) ;
+  conf = add_block(srcFeatures, name, opts, sz, nonLin, 'stride', 1, 'pad', pad) ;
+  perm = Layer.create(@permute, {conf, priorOpts.permuteOrder}) ;
+  perm.name = sprintf('%s_conf_perm', srcFeatures.name) ;
+  flatConf = Layer.create(@vl_nnflatten, {perm, priorOpts.flattenAxis}) ;
+  flatConf.name = sprintf('%s_conf_flat', srcFeatures.name) ;
+  predictors = { priorBox, flatLoc, flatConf } ;
+
+% ---------------------------------------------------------------------
+function net = add_block(net, name, opts, sz, nonLinearity, varargin)
+% ---------------------------------------------------------------------
+
+filters = Param('value', init_weight(opts, sz, 'single'), 'learningRate', 1) ;
+biases = Param('value', zeros(sz(4), 1, 'single'), 'learningRate', 2) ;
+
+net = vl_nnconv(net, filters, biases, varargin{:}, ...
+                'CudnnWorkspaceLimit', opts.modelOpts.CudnnWorkspaceLimit) ;
+net.name = name ;
+
+if nonLinearity
+  bn = opts.modelOpts.batchNormalization ;
+  rn = opts.modelOpts.batchRenormalization ;
+  assert(bn + rn < 2, 'cannot add both batch norm and renorm') ;
+  if bn
+    net = vl_nnbnorm(net, 'learningRate', [2 1 0.05], 'testMode', false) ;
+    net.name = sprintf('%s_bn', name) ;
+  elseif rn
+    net = vl_nnbrenorm_auto(net, opts.clips, opts.renormLR{:}) ; 
+    net.name = sprintf('%s_rn', name) ;
+  end
+  net = vl_nnrelu(net) ;
+  net.name = sprintf('%s_relu', name) ;
+end
 
 
-prevLayer = layerName ;
-layerName = sprintf('%s_1_relu', prefix) ;
-layer = dagnn.ReLU() ;
-inputs = net.layers(net.getLayerIndex(prevLayer)).outputs ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
 
-prevLayer = layerName ;
-layerName = sprintf('%s_2', prefix) ;
-ks = kernelSizes(2) ; 
-sz = [ks ks bottleneck channelsOut] ;
-layer = dagnn.Conv('size', sz, ...
-                    'pad', paddings(2,:), ...
-                    'stride', strides(2,:), ...
-                    'hasBias', true) ;
-inputs = net.layers(net.getLayerIndex(prevLayer)).outputs ;
-outputs = layerName ;
-params = {sprintf('%s_12', prefix), sprintf('%s_2b', prefix)} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-net = init_weights(net, layerName, ks, bottleneck, channelsOut) ;
+% -------------------------------------------------------------------------
+function weights = init_weight(opts, sz, type)
+% -------------------------------------------------------------------------
+% See K. He, X. Zhang, S. Ren, and J. Sun. Delving deep into
+% rectifiers: Surpassing human-level performance on imagenet
+% classification. CoRR, (arXiv:1502.01852v1), 2015.
 
-prevLayer = layerName ;
-layerName = sprintf('%s_2_relu', prefix) ;
-layer = dagnn.ReLU() ;
-inputs = net.layers(net.getLayerIndex(prevLayer)).outputs ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
+sc = sqrt(1/(sz(1)*sz(2)*sz(3))) ;
+%sc = sqrt(2/(sz(1)*sz(2)*sz(4))) ;  
+weights = randn(sz, type)*sc ;
 
-% -------------------------------------------------------------------
-function net = addMultiBoxLayers(net, prefix, prevLayerName, minSize, ... 
-                                 maxSize, aspectRatios, flip, clip, ...
-                                 step, offset, variances, channelsIn, ...
-                                 confOut, locOut, usePriorCaching) 
-% ------------------------------------------------------------------
-%ADDMULTIBOXLAYERS adds a set of multibox layers to a dagnn
-%   ADDMULTIBOXLAYERS adds the collection of network layers
-%   required to construct a MultiBox Prior "unit". A unit 
-%   consistss of seven layers:
-%   
-%   A PriorBox reference layer defining the default
-%   reference boxes, followed by 
-%       Convolution -> Permute -> Flatten 
-%           (for prior box locations)
-%       Convolution -> Permute -> Flatten 
-%           (for prior box class scores)
-%       
-%   ARGUMENTS:
-%       `net`: dagnn.DagNN net object under construction
-%       `prefix`: (string) name used to prefix each layer name in unit
-%       `prevLayerName`: (string) name of input feature layer
-%       `minSize`: (float) minimum size of prior boxes
-%       `maxSize`: (float) maximum size of prior boxes
-%       `aspectRatios`: (float) array of aspect ratios used for prior boxes
-%       `flip`: (logical) add flipped versions of each aspect ratio
-%       `clip`: (logical) clip prior boxes to lie inside feature map
-%       `step`: (int) number of pixel steps taken in image to match a pixel
-%               step in the feature map
-%       `offset`: (float) offset applied to centre each feature location
-%       `variances`: (4x1 array) variances used to scale prior boxes
-%       `channelsIn`: (int) number of channels in the input layer
-%       `confOut`: (int) number of filters used to predict class confidences
-%       `locOut`: (int) number of filters used to predict box location updates
-%       `usePriorCaching`: (logical) cache the prior boxes and re-use after
-%                          the first pass
+% -------------------------------------------------------------------------
+function pixelSteps = computePixelSteps(net, sourceLayers, opts)
+% -------------------------------------------------------------------------
+% compute the pixel steps 
+trunk = Net(net, sourceLayers{1}) ; % include the scale norm layer
+imSz = opts.modelOpts.architecture ;
+inputs = {'data', zeros(imSz, imSz, 3, 1, 'single')} ;
 
-% store the layer on which the multibox layers will be based
-rootLayerName = prevLayerName ;
+if opts.modelOpts.batchRenormalization
+  clips = [1 0] ;
+  inputs = {inputs{:}, 'clips', clips}  ;
+end
 
-layerName = sprintf('%s_mbox_priorbox', prefix) ;
-layer = dagnn.PriorBox('minSize', minSize, ...
-                       'maxSize', maxSize, ...
-                       'aspectRatios', aspectRatios, ...
-                       'flip', flip, ...
-                       'clip', clip, ...
-                       'pixelStep', step, ...
-                       'offset', offset, ...
-                       'usePriorCaching', true, ...
-                       'variance', variances) ;
-inputs = { net.layers(net.getLayerIndex(rootLayerName)).outputs{1} 'data' };
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
+trunk.eval(inputs, 'forward') ;
 
-layerName = sprintf('%s_mbox_loc', prefix) ;
-ks = 3 ;
-sz = [ks ks channelsIn locOut] ;
-layer = dagnn.Conv('size', sz, 'pad', 1, 'stride', 1, 'hasBias', true) ;
-inputs = net.layers(net.getLayerIndex(rootLayerName)).outputs ;
-outputs = layerName ;
-params = {sprintf('%s_mbox_locf', prefix), sprintf('%s_mbox_locb', prefix)} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-net = init_weights(net, layerName, ks, channelsIn, locOut) ;
+for i = 1:numel(sourceLayers)
+  layer = sourceLayers{i} ;
+  feats = trunk.getValue(layer) ;
+  featDim = size(feats, 1) ;
+  pixelSteps(i) = imSz / featDim ;
+end
 
-prevLayerName = layerName ;
-layerName = sprintf('%s_mbox_loc_perm', prefix) ;
-layer = dagnn.Permute('order', [3 2 1 4]);
-inputs = net.layers(net.getLayerIndex(prevLayerName)).outputs ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-prevLayerName = layerName ;
-layerName = sprintf('%s_mbox_loc_flat', prefix) ;
-layer = dagnn.Flatten('axis', 3) ;
-inputs = net.layers(net.getLayerIndex(prevLayerName)).outputs ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-layerName = sprintf('%s_mbox_conf', prefix) ;
-ks = 3 ;
-sz = [ks ks channelsIn confOut] ;
-layer = dagnn.Conv('size', sz, 'pad', 1, 'stride', 1, 'hasBias', true) ;
-inputs = net.layers(net.getLayerIndex(rootLayerName)).outputs ;
-outputs = layerName ;
-params = {sprintf('%s_mbox_conff', prefix), sprintf('%s_mbox_confb', prefix)} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-net = init_weights(net, layerName, ks, channelsIn, confOut) ;
-
-prevLayerName = layerName ;
-layerName = sprintf('%s_mbox_conf_perm', prefix) ;
-layer = dagnn.Permute('order', [3 2 1 4]);
-inputs = net.layers(net.getLayerIndex(prevLayerName)).outputs ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-prevLayerName = layerName ;
-layerName = sprintf('%s_mbox_conf_flat', prefix) ;
-layer = dagnn.Flatten('axis', 3) ;
-inputs = net.layers(net.getLayerIndex(prevLayerName)).outputs ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-% --------------------------------------------------------------------------
-function net = addFusionLayer(net, layerName, fuseType, sourcePrefixes, axis)
-% --------------------------------------------------------------------------
-%ADDFUSIONLAYER adds a layer to concatenate source layers
-%   ADDFUSIONLAYER adds a concatenation layer fusing inputs of a 
-%   particular type
-%   
-%   ARGUMENTS:
-%       `layerName` name of created layer 
-%       `fuseType` types to be fused (can be 'loc', 'conf' or 
-%        'priorbox') 
-%       `sourcPrefixes` cell array of prefix strings of layers to 
-%        be fused
-%       `axis` dimension of concatenation 
-
-layer = dagnn.Concat('dim', axis) ;
-inputLayers = cellfun(@(x) sprintf('%s_mbox_%s', x, fuseType), ...
-                        sourcePrefixes, 'UniformOutput', false) ;
-inputs = cellfun(@(x) net.layers(net.getLayerIndex(x)).outputs{1}, ...
-                    inputLayers, 'UniformOutput', false) ;
-outputs = layerName ;
-params = {} ;
-net.addLayer(layerName, layer, inputs, outputs, params) ;
-
-% ------------------------------------------------------
-function net = init_weights(net, layerName, ks, in, out)
-% ------------------------------------------------------
-% xavier initialize weights and set initial learning rates
-
-paramNames = net.layers(net.getLayerIndex(layerName)).params ;
-filterName = paramNames{1} ;
-biasName = paramNames{2} ;
-
-% mimic caffe version
-sc = sqrt(1/(ks*ks*in)) ;
-filters = randn(ks, ks, in, out, 'single') * sc ;
-net.params(net.getParamIndex(filterName)).value = filters ;
-net.params(net.getParamIndex(filterName)).learningRate = 1 ;
-
-biases = zeros(out, 1, 'single') ;
-net.params(net.getParamIndex(biasName)).value = biases ;
-net.params(net.getParamIndex(biasName)).learningRate = 2 ;
-net.params(net.getParamIndex(biasName)).weightDecay = 0 ;
+% In the original SSD implementation, these are mostly "squashed" 
+% into powers of two. However, after consuming some wild herbal tea,
+% I decided that this isn't the way that nature intended, so I 
+% tend to use non-integer steps
+if opts.reproduceSSD
+  switch opts.modelOpts.architecture
+    case 300
+      pixelSteps = [8, 16, 32, 64, 100, 300] ;
+    case 512
+      pixelSteps = [8, 16, 32, 64, 128, 256, 512] ;
+    otherwise
+      error('disable `reproduceSSD` option for non standard architecutres') ;
+  end
+end
 

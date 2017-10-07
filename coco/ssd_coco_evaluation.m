@@ -36,81 +36,58 @@ function results = ssd_coco_evaluation(varargin)
 % Licensed under The MIT License [see LICENSE.md for details]
 
   opts.net = [] ;
-  opts.expDir = '' ; % preserve interface
   opts.gpus = 1 ;
-  opts.dataRoot = fullfile(vl_rootnn, 'data/datasets') ;
-  opts.batchSize = 8 ;
-  opts.year = 2014 ;
-  opts.msScales = 1 ; % by default, only single scale selection is used
+  opts.expDir = '' ; % preserve interface
   opts.useMiniVal = 1 ; 
   opts.testset = 'val' ;
   opts.visualise = false ;
   opts.refreshCache = false ;
   opts.modelName = 'ssd-mscoco-vggvd-300' ;
-  opts = vl_argparse(opts, varargin) ;
-
-  if isempty(opts.net)
-    dag = ssd_zoo(opts.modelName) ; 
-    out = Layer.fromDagNN(dag, @ssd_autonn_custom_fn) ; opts.net = Net(out{:}) ;
-    imSz = opts.net.meta.normalization.imageSize ;
-    detLayer = dag.getLayerIndex('detection_out') ; % store meta info
-    opts.net.meta.keepTopK = dag.layers(detLayer).block.keepTopK ;
-  end
-
-  modelOpts.get_eval_batch = @ssd_eval_get_batch ;
-  opts.multiscale = (numel(opts.msScales) ~= 1) || opts.msScales ~= 1 ;
-
-  if opts.multiscale
-    assert(numel(opts.net) >= 2, 'multiple nets should be used for ms eval') ;
-    nets = opts.net ; first = nets{1} ; imSz = first.meta.normalization.imageSize ;
-    modelOpts.get_eval_batch = @ssd_eval_get_batch_multiscale_io ;
-  end
-
-  % evaluation options
-  opts.prefetch = true ; opts.fixedSizeInputs = false ;
 
   % configure batch opts
-  numGpus = numel(opts.gpus) ; batchOpts.use_vl_imreadjpeg = true ;
-  batchOpts.batchSize = opts.batchSize * numGpus ; 
-  batchOpts.numThreads = 4 * numGpus ;
-  batchOpts.batchRenormalization = ~isempty(strfind('-rn', opts.modelName)) ;
-
-  % not used in multiscale code currently
-  %batchOpts.imMean = opts.net.meta.normalization.averageImage ; % 
-  %if isfield(opts.net.meta.normalization, 'scaleInputs')
-    %batchOpts.scaleInputs = opts.net.meta.normalization.scaleInputs ;
-  %else
-    %batchOpts.scaleInputs = 0 ; % image scaling is only used by mobilenet
-  %end
-
-  % cache configuration and model
-  if numel(imSz) == 1, imSz = repmat(imSz, [1 2]) ; end ; batchOpts.imageSize = imSz ;
-  cacheOpts.refreshCache = opts.refreshCache ; modelOpts.predVar = 'detection_out' ;
+  opts.batchOpts.batchSize = 8 ; 
+  opts.batchOpts.numThreads = 4 ;
+  opts.batchOpts.prefetch = true ;
 
   % configure dataset options
-  dataOpts.name = 'coco' ; dataOpts.year = opts.year ; 
-  dataOpts.scoreThresh = 0.01 ; dataOpts.decoder = 'parallel' ;
-  % minival annotations are only used for 2014
-  tail = 'mscoco/annotations/instances_minival2014.json' ;
-  dataOpts.miniValPath = fullfile(opts.dataRoot, tail) ;
-  dataOpts.getImdb = @getCocoImdb ; dataOpts.eval_func = @coco_eval_func ;
-  dataOpts.displayResults = @displayCocoResults ;
-  dataOpts.labelMapFile = fullfile(vl_rootnn, 'data/coco/label_map.txt') ;
-  if ~isempty(opts.dataRoot), dataOpts.dataRoot = opts.dataRoot ; else
-    dataOpts.dataRoot = fullfile(vl_rootnn, 'data', 'datasets') ;
-  end
-  dataOpts.configureImdbOpts = @configureImdbOpts ;
-  dataOpts.resultsFormat = 'minWH' ; 
+  opts.dataOpts.name = 'coco' ; 
+  opts.dataOpts.year = 2014 ; 
+  opts.dataOpts.scoreThresh = 0.01 ; 
+  opts.dataOpts.decoder = 'parallel' ;
+  opts.dataOpts.resultsFormat = 'minWH' ; 
+  opts.dataOpts.getImdb = @getCocoImdb ; 
+  opts.dataOpts.eval_func = @coco_eval_func ;
+  opts.dataOpts.displayResults = @displayCocoResults ;
+  opts.dataOpts.configureImdbOpts = @configureImdbOpts ;
+  opts.dataOpts.dataRoot = fullfile(vl_rootnn, 'data', 'datasets') ;
+  opts.dataOpts.labelMapFile = fullfile(vl_rootnn, 'data/coco/label_map.txt') ;
+  opts.dataOpts.miniValPath = fullfile(opts.dataOpts.dataRoot, ...
+    'mscoco/annotations/instances_minival2014.json') ; % only 2014 uses minival)
+
+  % configure model options
+  opts.modelOpts.keepTopK = 200 ;
+  opts.modelOpts.predVar = 'detection_out' ;
+  opts.modelOpts.get_eval_batch = @ssd_eval_get_batch ;
+
+  % configure multiscale options
+  opts.msOpts.use = false ;
+  opts.msOpts.scales = [1 1.4] ;
+  opts.msOpts.nmsThresh = 0.45 ;
+  opts = vl_argparse(opts, varargin) ;
+
+  [net, opts] = configureNets(opts) ; % configure network(s) for evaluation
+
+  % cache configuration and model
+  cacheOpts.refreshCache = opts.refreshCache ; 
 
   % select imdb based on year
-  imdbName = sprintf('imdb%d.mat', opts.year) ;
-  dataOpts.imdbPath = fullfile(vl_rootnn, 'data/coco/standard_imdb/', imdbName) ;
+  imdbName = sprintf('imdb%d.mat', opts.dataOpts.year) ;
   imdbOpts.conserveSpace = true ; imdbOpts.includeTest = true  ;
+  opts.dataOpts.imdbPath = fullfile(vl_rootnn, 'data/coco/standard_imdb', imdbName) ;
+  opts.imdbOpts = imdbOpts ; 
 
-  % -------------------------
   % configure paths
-  % -------------------------
-  label = sprintf('%s%d', dataOpts.name, dataOpts.year) ;
+  label = sprintf('%s%d', opts.dataOpts.name, opts.dataOpts.year) ;
   expDir = fullfile(vl_rootnn, 'data/evaluations', label, opts.modelName) ;
   resultsFile = sprintf('%s-%s-results.mat', opts.modelName, opts.testset) ;
   rawPredsFile = sprintf('%s-%s-raw-preds.mat', opts.modelName, opts.testset) ;
@@ -124,16 +101,9 @@ function results = ssd_coco_evaluation(varargin)
   cacheOpts.decodedPredsCache = fullfile(evalCacheDir, decodedPredsFile) ;
   cacheOpts.resultsCache = fullfile(evalCacheDir, resultsFile) ;
   cacheOpts.evalCacheDir = evalCacheDir ;
+  opts.cacheOpts = cacheOpts ; 
 
-  % multiscale options
-  msOpts.nmsThresh = 0.45 ; msOpts.scales = opts.msScales ;
-
-  % configure meta options
-  opts.dataOpts = dataOpts ; opts.modelOpts = modelOpts ; 
-  opts.batchOpts = batchOpts ; opts.cacheOpts = cacheOpts ; 
-  opts.imdbOpts = imdbOpts ; opts.msOpts = msOpts ;
-
-  results = ssd_evaluation(expDir, opts.net, opts) ;
+  results = ssd_evaluation(expDir, net, opts) ;
 
 % -----------------------------------------------------------
 function [opts, imdb] = configureImdbOpts(~, opts, imdb)
@@ -195,36 +165,25 @@ function aps = coco_eval_func(~, decoded, imdb, opts)
 % ------------------------------------------------------------------------
 function visualizeRes(res, cocoEval,imdb)
 % ------------------------------------------------------------------------
-res = res([res.score] > 0.6) ; % restrict to confident preds
-sampleSize = 100 ; sample = randi(numel(res), 1, sampleSize) ;
-[revLabelMap,labels] = getCocoLabelMap('reverse', true) ;
-for ii = 1:numel(sample)
-  rec = res(sample(ii)) ;
-  id = find(imdb.images.id == rec.image_id) ;
-  imName = imdb.images.name{id} ; template = imdb.images.paths{id} ;
-  imPath = sprintf(template, imName) ; im = single(imread(imPath)) ;
-  label = labels{revLabelMap(rec.category_id)} ;
-  box = rec.bbox ; score = rec.score ;  
-  gtIds = [cocoEval.cocoGt.data.annotations.image_id] ;
-  gt = cocoEval.cocoGt.data.annotations((gtIds == rec.image_id)) ;
-  drawCocoBoxes(im, box, score, label, 'format', 'MinWH', 'gt', gt) ;
-end
+  res = res([res.score] > 0.6) ; % restrict to confident preds
+  sampleSize = 100 ; sample = randi(numel(res), 1, sampleSize) ;
+  [revLabelMap,labels] = getCocoLabelMap('reverse', true) ;
+  for ii = 1:numel(sample)
+    rec = res(sample(ii)) ;
+    id = find(imdb.images.id == rec.image_id) ;
+    imName = imdb.images.name{id} ; template = imdb.images.paths{id} ;
+    imPath = sprintf(template, imName) ; im = single(imread(imPath)) ;
+    label = labels{revLabelMap(rec.category_id)} ;
+    box = rec.bbox ; score = rec.score ;  
+    gtIds = [cocoEval.cocoGt.data.annotations.image_id] ;
+    gt = cocoEval.cocoGt.data.annotations((gtIds == rec.image_id)) ;
+    drawCocoBoxes(im, box, score, label, 'format', 'MinWH', 'gt', gt) ;
+  end
 
 % ---------------------------------------------------------------------------
 function displayCocoResults(~, aps, opts)
 % ---------------------------------------------------------------------------
-if ~strcmp(opts.testset, 'val'), return ; end 
-[~,labels] = getCocoLabelMap('labelMapFile', opts.dataOpts.labelMapFile) ;
-iou=0.5:0.05:0.95 ; areas='asml' ; mdets=[1 10 100] ;
-t = 1 ; 
-a = 1 ; 
-m = 3 ; % max dets = 100
-%fprintf('AP @0.5 IoU, areas=%s, max dets/img=%d\n',iou(t),areas(a),mdets(m)) ;
-%tot = zeros(1, numel(aps.params.catIds) ;
-%for ii = 1:numel(aps.params.catIds)
-  %s = aps.precision(1,:,ii,a,m) ; s=mean(s(s>=0)) * 100 ; 
-  %tot(ii) = s ;
-  %fprintf('%.1f: %s \n', s, labels{ii}) ;
-%end
-s = aps.precision(:,:,:,a,m) ; cocoScore = mean(s(s>=0)) * 100 ;
-fprintf('coco score for %s: %g \n', opts.modelName, cocoScore) ;
+  if ~strcmp(opts.testset, 'val'), return ; end 
+   a = 1 ; m = 3 ; % max dets = 100
+  s = aps.precision(:,:,:,a,m) ; cocoScore = mean(s(s>=0)) * 100 ;
+  fprintf('coco score for %s: %g \n', opts.modelName, cocoScore) ;

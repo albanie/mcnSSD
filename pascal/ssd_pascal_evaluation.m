@@ -30,7 +30,7 @@ function ssd_pascal_evaluation(varargin)
 %    The name of the detector to be evaluated (used to generate output
 %    file names, caches etc.)
 %
-%   `refresh` :: false
+%   `refreshCache` :: false
 %    If true, overwrite previous predictions by any detector sharing the 
 %    same model name, otherwise, load results directly from cache.
 %
@@ -41,8 +41,8 @@ function ssd_pascal_evaluation(varargin)
 %    perform multiscale evaluation.  Multiple networks are required for 
 %    multiscale evalaution because the SSD architecture does not perform well
 %    if applied naively at different scales.  
-%    TODO(samuel): add proper explanation of this behaviour
 %
+% ----------------------------------------------------------------------------
 %   `modelOpts` :: struct(...)
 %    A structure of options relating to the properties of the model, with the 
 %    following fields:
@@ -54,9 +54,23 @@ function ssd_pascal_evaluation(varargin)
 %
 %      `keepTopK` :: 200 
 %       The number of predictions that should be kept for evaluation at test
-%       time (can be up to 200).
+%       time. Note: if this is significantly increased, inference is slower 
+%       and memory issues can occur.
 %
-%   `multiscaleOpts` :: struct(...)
+%      `nmsTopK` :: 400 
+%       The number of intermediate predictions that should be kept for the 
+%       final stage of non maximum supression. Note: if this is significantly 
+%       increased, inference is slower and memory issues can occur.
+%
+%      `confThresh` :: 0.01 
+%       The minimum confidence required for a prediction to be scored as a 
+%       "detection" by the network.
+%
+%      `nmsThresh` :: 0.45 
+%       The NMS threshold used to select predictions on a single image.
+%
+% ----------------------------------------------------------------------------
+%   `msOpts` :: struct(...)
 %    A structure of options prescribing the multiscale evaluation settings with
 %    the following fields:
 %      `use` :: false 
@@ -64,6 +78,9 @@ function ssd_pascal_evaluation(varargin)
 %
 %      `scales` :: [0.8 1 1.4] 
 %       The input size scales that should be combined at test time
+%
+%      `nmsThresh` :: 0.45 
+%       The NMS threshold used to combine predictions from multiple scales
 %
 %   `dataOpts` :: struct(...)
 %    A structure of options setting paths for the data
@@ -77,22 +94,21 @@ function ssd_pascal_evaluation(varargin)
   opts.net = [] ;
   opts.gpus = 3 ;
   opts.year = 2007 ;
-  opts.refresh = true ;
-  opts.testset = 'test' ; 
   opts.msScales = 1 ; % by default, only single scale selection is used
+  opts.testset = 'test' ; 
   opts.evalVersion = 'fast' ;
+  opts.refreshCache = false ;
   opts.modelName = 'ssd-pascal-vggvd-300' ;
 
   % configure batch opts
   opts.batchOpts.batchSize = 8 ;
   opts.batchOpts.numThreads = 4 ;
-  opts.batchOpts.use_vl_imreadjpeg = true ; 
   opts.batchOpts.prefetch = true ;
 
   % configure dataset options
   opts.dataOpts.name = 'pascal' ;
   opts.dataOpts.decoder = 'serial' ;
-  opts.dataOpts.getImdb = @getPascalImdb ;
+  opts.dataOpts.getImdb = @getCombinedPascalImdb ;
   opts.dataOpts.resultsFormat = 'minMax' ; 
   opts.dataOpts.eval_func = @pascal_eval_func ;
   opts.dataOpts.evalVersion = opts.evalVersion ;
@@ -101,23 +117,21 @@ function ssd_pascal_evaluation(varargin)
   opts.dataOpts.dataRoot = fullfile(vl_rootnn, 'data', 'datasets') ;
   opts.dataOpts.imdbPath = fullfile(vl_rootnn, ...
                                        'data/pascal/standard_imdb/imdb.mat') ;
-
   % configure model options
-  opts.keepTopK = 200 ;
+  opts.modelOpts.nmsTopK = 400 ;
+  opts.modelOpts.keepTopK = 200 ;
+  opts.modelOpts.nmsThresh = 0.45 ;
+  opts.modelOpts.confThresh = 0.01 ;
   opts.modelOpts.predVar = 'detection_out' ;
   opts.modelOpts.get_eval_batch = @ssd_eval_get_batch ;
 
   % configure multiscale options
-  opts.multiscaleOpts.use = false ;
-  opts.multiscaleOpts.scales = [0.8 1 1.4] ;
-
+  opts.msOpts.use = false ;
+  opts.msOpts.scales = [1 1.4] ;
+  opts.msOpts.nmsThresh = 0.45 ;
   opts = vl_argparse(opts, varargin) ;
 
-  net = loadNets(opts) ; % configure network(s) for evaluation
-
-  % configure network-dependent batch options
-  opts = configureBatchOpts(opts, net) ;
-
+  [net, opts] = configureNets(opts) ; % configure network(s) for evaluation
 
   % configure paths
   tail = fullfile('evaluations', opts.dataOpts.name, opts.modelName) ;
@@ -125,45 +139,44 @@ function ssd_pascal_evaluation(varargin)
   resultsFile = sprintf('%s-%s-results.mat', opts.modelName, opts.testset) ;
   rawPredsFile = sprintf('%s-%s-raw-preds.mat', opts.modelName, opts.testset) ;
   decodedPredsFile = sprintf('%s-%s-decoded.mat', opts.modelName, opts.testset) ;
-  evalCacheDir = fullfile(expDir, 'eval_cache') ;
+  evalCacheDir = fullfile(expDir, sprintf('eval_cache-%d', opts.year)) ;
   if ~exist(evalCacheDir, 'dir') 
     mkdir(evalCacheDir) ; mkdir(fullfile(evalCacheDir, 'cache')) ;
   end
 
   % cache configuration 
-  cacheOpts.refreshPredictionCache = opts.refresh ;
-  cacheOpts.refreshDecodedPredCache = opts.refresh ;
-  cacheOpts.refreshEvaluationCache = opts.refresh ;
-  cacheOpts.refreshFigures = true ;
-
   cacheOpts.rawPredsCache = fullfile(evalCacheDir, rawPredsFile) ;
   cacheOpts.decodedPredsCache = fullfile(evalCacheDir, decodedPredsFile) ;
   cacheOpts.resultsCache = fullfile(evalCacheDir, resultsFile) ;
   cacheOpts.evalCacheDir = evalCacheDir ;
+  cacheOpts.refreshCache = opts.refreshCache ;
   opts.cacheOpts = cacheOpts ;
-
   ssd_evaluation(expDir, net, opts) ;
 
 % ------------------------------------------------------------------
 function aps = pascal_eval_func(modelName, decodedPreds, imdb, opts)
 % ------------------------------------------------------------------
-
   fprintf('evaluating predictions for %s\n', modelName) ;
   numClasses = numel(imdb.meta.classes) - 1 ;  % exclude background
   aps = zeros(numClasses, 1) ;
-
-  for c = 1:numClasses
-    className = imdb.meta.classes{c + 1} ; % offset for background
-    results = eval_voc(className, ...
-                       decodedPreds.imageIds{c}, ...
-                       decodedPreds.bboxes{c}, ...
-                       decodedPreds.scores{c}, ...
-                       opts.dataOpts.VOCopts, ...
-                       'evalVersion', opts.dataOpts.evalVersion) ;
-    fprintf('%s %.1\n', className, 100 * results.ap) ;
-    aps(c) = results.ap_auc ;
+  if (opts.year == 2012) && strcmp(opts.testset, 'test')
+    fprintf('preds on 2012 test set must be submitted to the eval server\n') ;
+    keyboard % TODO(samuel): Add support for output format
+  else
+    for c = 1:numClasses
+      className = imdb.meta.classes{c + 1} ; % offset for background
+      results = eval_voc(className, ...
+                         decodedPreds.imageIds{c}, ...
+                         decodedPreds.bboxes{c}, ...
+                         decodedPreds.scores{c}, ...
+                         opts.dataOpts.VOCopts, ...
+                         'evalVersion', opts.dataOpts.evalVersion, ...
+                         'year', opts.year) ;
+      fprintf('%s %.1\n', className, 100 * results.ap) ;
+      aps(c) = results.ap_auc ;
+    end
+    save(opts.cacheOpts.resultsCache, 'aps') ;
   end
-  save(opts.cacheOpts.resultsCache, 'aps') ;
 
 % -----------------------------------------------------------
 function [opts, imdb] = configureImdbOpts(expDir, opts, imdb)
@@ -171,46 +184,17 @@ function [opts, imdb] = configureImdbOpts(expDir, opts, imdb)
 % configure VOC options 
 % (must be done after the imdb is in place since evaluation
 % paths are set relative to data locations)
-
   switch opts.year   
     case 2007, imdb.images.set(imdb.images.year == 2012) = -1 ;   
     case 2012, imdb.images.set(imdb.images.year == 2007) = -1 ;   
     case 0712 % do nothing    
     otherwise, error('Data from year %s not recognized', opts.year) ;    
   end   
+  % ignore images that do not reside in the classification & detection challenge
+  imdb.images.set(~imdb.images.classification) = -1 ;
   VOCopts = configureVOC(expDir, opts.dataOpts.dataRoot, opts.year) ;
   VOCopts.testset = opts.testset ;
   opts.dataOpts.VOCopts = VOCopts ;
-
-% ----------------------------
-function nets = loadNets(opts)
-% ----------------------------
-% load the network (or in the case of multiscale eval, multiple networks)
-% for evaluation
-  if isempty(opts.net)
-    dag = ssd_zoo(opts.modelName) ; 
-    out = Layer.fromDagNN(dag, @extras_autonn_custom_fn) ; 
-    nets = {Net(out{:})} ;
-  else
-    if ~all(opts.msScales == 1)
-      msg = 'multiple nets should be supplied for multiscale evaluation' ;
-      assert(numel(opts.net) >= 2, msg) ;
-    end
-    nets = opts.net ; 
-  end
-
-% -------------------------------------------
-function opts = configureBatchOpts(opts, net)
-% -------------------------------------------
-% CONFIGUREBATCHOPTS(OPTS, NET) configures the batch options which are 
-% network dependent.  Since multiple networks may be used in multiscale
-% evaluation, batch options are set from the first network supplied in 
-% the cell array of networks.
-
-  first = net{1} ;
-  opts.batchOpts.imageSize = first.meta.normalization.imageSize ;
-  opts.batchOpts.imMean = first.meta.normalization.averageImage ;
-  opts.batchOpts.scaleInputs = [] ;
 
 % ---------------------------------------------------------------------------
 function displayPascalResults(modelName, aps, opts)
