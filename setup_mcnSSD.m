@@ -4,6 +4,7 @@ function setup_mcnSSD
   % add dependencies
   check_dependency('autonn') ;
   check_dependency('mcnExtraLayers') ;
+  check_dependency('mcnDatasets') ;
 
   root = fileparts(mfilename('fullpath')) ;
   addpath(root, [root '/misc'], [root '/matlab']) ;
