@@ -53,6 +53,7 @@ function decodedPreds = decodePredictions(predictions, imdb, testIdx, opts)
     % For debuggin/small datasets serial decoding is useful
     case 'serial', decodedPreds = decodeSerial(args{:}) ;
     case 'parallel', decodedPreds = decodeParallel(args{:}) ;
+    case 'custom', decodedPreds = opts.dataOpts.customDecoder(args{:}) ;
     otherwise, error('deocoder %s not recognised',opts.dataOpts.deocoder) ;
   end
 
@@ -210,8 +211,8 @@ function predictions = computePredictions(net, imdb, testIdx, opts)
        state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
        predictions_ = state.predictions ;
     else
-      keepTopK = opts.modelOpts.keepTopK ;
-      predictions_ = zeros(keepTopK, 6, 1, numel(testIdx), 'single') ; 
+      keepTopK = opts.modelOpts.keepTopK ; outCols = opts.modelOpts.outCols ;
+      predictions_ = zeros(keepTopK, outCols, 1, numel(testIdx), 'single') ; 
       spmd
         state = processDetections(net_, imdb, params, opts, 'scale', scale) ;
       end
@@ -287,7 +288,8 @@ function state = processDetections(net, imdb, params, opts, varargin)
   startIdx = labindex:numlabs:opts.batchOpts.batchSize ;
   idx = arrayfun(@(x) {x:opts.batchOpts.batchSize:numel(testIdx)}, startIdx) ;
   computedIdx = sort(horzcat(idx{:})) ; keepTopK = opts.modelOpts.keepTopK ;
-  state.predictions = zeros(keepTopK, 6, 1, numel(computedIdx), 'single') ; 
+  outCols = opts.modelOpts.outCols ;
+  state.predictions = zeros(keepTopK, outCols, 1, numel(computedIdx), 'single') ; 
   state.computedIdx = computedIdx ; offset = 1 ;
 
   for t = 1:opts.batchOpts.batchSize:numel(testIdx) 

@@ -23,16 +23,13 @@ function ssd_train(expDir, opts, varargin)
                       'expDir', expDir) ;
 
 
-  % --------------------------------------------------------------------
-  %                                                            Evaluatte
-  % --------------------------------------------------------------------
-
+  % Evaluatte
   [net, modelName] = deployModel(expDir, opts) ;
   opts.eval_func('net', net, 'modelName', modelName, 'gpus', opts.train.gpus) ;
 
-  % ---------------------------------------------------
-  function [net, modelName] = deployModel(expDir, opts)
-  % ---------------------------------------------------
+% ---------------------------------------------------
+function [net, modelName] = deployModel(expDir, opts)
+% ---------------------------------------------------
     bestEpoch = findBestEpoch(expDir, 'priorityMetric', opts.priorityMetric, ...
                                          'prune', opts.pruneCheckpoints) ;
     bestNet = fullfile(expDir, sprintf('net-epoch-%d.mat', bestEpoch)) ;
@@ -44,14 +41,3 @@ function ssd_train(expDir, opts, varargin)
     storedNet = load(deployPath) ;
     net = Net(storedNet) ;
     [~,modelName,~] = fileparts(expDir) ; 
-
-% --------------------------------------------------
-%function [net, modelName] = deployModel(expDir, opts)
-%% --------------------------------------------------
-%bestEpoch = findBestEpoch(expDir, 'priorityMetric', 'mbox_loss', ...
-                                                    %'prune', true) ;
-%bestNet = fullfile(expDir, sprintf('net-epoch-%d.mat', bestEpoch)) ;
-%deployPath = sprintf(opts.modelOpts.deployPath, bestEpoch) ;
-%opts.modelOpts.deploy_func(bestNet, deployPath, opts.modelOpts.numClasses) ;
-%net = dagnn.DagNN.loadobj(load(deployPath)) ;
-%[~,modelName,~] = fileparts(expDir) ; 

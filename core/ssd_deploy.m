@@ -1,4 +1,4 @@
-function net = ssd_deploy(srcPath, destPath, numClasses)
+function net = ssd_deploy(srcPath, destPath, numClasses, varargin)
 % SSD_DEPLOY deploys an SSD model for evaluation
 %   NET = SSD_DEPLOY(SRCPATH, DESTPATH, NUMCLASSES) configures
 %   an SSD model to perform evaluation.  THis process involves
@@ -6,11 +6,14 @@ function net = ssd_deploy(srcPath, destPath, numClasses)
 %   a combination of a transpose softmax with a detection
 %   layer to compute network predictions
 %
-% Copyright (C) 2017 Samuel Albanie and Andrea Vedaldi
-% All rights reserved.
-%
-% This file is part of the VLFeat library and is made available under
-% the terms of the BSD license (see the COPYING file).
+% Copyright (C) 2017 Samuel Albanie
+% Licensed under The MIT License [see LICENSE.md for details]
+
+  opts.locs = 'mbox_loc' ;
+  opts.confs = 'mbox_conf' ;
+  opts.priors = 'mbox_priorbox' ;
+  opts.rawScores = false ;
+  opts = vl_argparse(opts, varargin) ;
 
   outDir = fileparts(destPath) ;
   if ~exist(outDir, 'dir'), mkdir(outDir) ; end
@@ -26,14 +29,18 @@ function net = ssd_deploy(srcPath, destPath, numClasses)
     stored = Layer.fromCompiledNet(tmp.net) ;
   end
 
-  priors = findByName(stored, 'mbox_priorbox') ;
-  confs = findByName(stored, 'mbox_conf') ;
-  locs = findByName(stored, 'mbox_loc') ;
+  locs = findByName(stored, opts.locs) ;
+  confs = findByName(stored, opts.confs) ;
+  priors = findByName(stored, opts.priors) ;
 
   shape = {numClasses, 1, []} ;
   flattenAxis = 3 ; softDim = 1 ; nmsThresh = 0.45 ;
   res = Layer.create(@vl_nnreshape, {confs, shape}) ;
-  softT = Layer.create(@vl_nnsoftmaxt, {res, 'dim', softDim}) ;
+  if opts.rawScores
+    softT = res ; % useful for applications where softmax is not required
+  else
+    softT = Layer.create(@vl_nnsoftmaxt, {res, 'dim', softDim}) ;
+  end
   flat = Layer.create(@vl_nnflatten, {softT, flattenAxis}) ;
   det = Layer.create(@vl_nnmultiboxdetector, {locs, flat, priors, ...
                                      'numClasses', numClasses, ...

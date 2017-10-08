@@ -69,6 +69,11 @@ function ssd_pascal_evaluation(varargin)
 %      `nmsThresh` :: 0.45 
 %       The NMS threshold used to select predictions on a single image.
 %
+%      `outCols` :: 6
+%       The number of columns forming the structured output of the detector.
+%       By default this is 6 (where each row consists of a class label, a 
+%       confidence and 4 values describing the assoicated bounding box).
+%
 % ----------------------------------------------------------------------------
 %   `msOpts` :: struct(...)
 %    A structure of options prescribing the multiscale evaluation settings with
@@ -122,6 +127,7 @@ function ssd_pascal_evaluation(varargin)
   opts.modelOpts.keepTopK = 200 ;
   opts.modelOpts.nmsThresh = 0.45 ;
   opts.modelOpts.confThresh = 0.01 ;
+  opts.modelOpts.outCols = 6 ;
   opts.modelOpts.predVar = 'detection_out' ;
   opts.modelOpts.get_eval_batch = @ssd_eval_get_batch ;
 
