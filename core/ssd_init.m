@@ -24,8 +24,7 @@ function net = ssd_init(opts, varargin)
   if ~isfield(opts.modelOpts, 'numSources'), opts.modelOpts.numSources = ns ; end
 
   % load pre-trained base network (so far, only tested model is vgg-16-reduced)
-  tmp = vl_simplenn_tidy(load(opts.modelOpts.sourceModel)) ;
-  dag = dagnn.DagNN.fromSimpleNN(tmp) ;
+  dag = ssd_zoo(opts.modelOpts.sourceModel) ;
 
   % modify trunk biases learnning rate and weight decay to match caffe 
   params = {'conv1_1b','conv1_2b','conv2_1b','conv2_2b','conv3_1b', ...
@@ -46,7 +45,7 @@ function net = ssd_init(opts, varargin)
   dag.layers(dag.getLayerIndex('pool5')).block.poolSize = [3 3] ;
   dag.layers(dag.getLayerIndex('pool5')).block.pad = [1 1 1 1] ;
 
- % configure inputs
+  % configure inputs
   data = Input('data') ;
   gtBoxes = Input('targets') ;
   gtLabels = Input('labels') ;
@@ -187,48 +186,44 @@ function net = ssd_init(opts, varargin)
 % --------------------------------------------------------------------
 function loss = add_loss(opts, gtBoxes, gtLabels, priors, confs, locs)
 % --------------------------------------------------------------------
+  numClasses = opts.modelOpts.numClasses ;
+  overlapThreshold = opts.modelOpts.overlapThreshold ;
+
   % Matching and decoder layers
-  [matches, targets, tWeights, boxes] = Layer.create(@vl_nnmatchpriors, ...
-                        {priors, gtBoxes, gtLabels, ...
-                        'overlapThreshold', opts.modelOpts.overlapThreshold}, ...
-                        'numInputDer', 0) ; 
-  matches.name = 'matches' ;
-  targets.name = 'targets' ;
-  tWeights.name = 'tWeights' ;
-  boxes.name = 'boxes' ;
+  args = {priors, gtBoxes, 'overlapThreshold', overlapThreshold} ; 
+  [matches, targets, tWeights, boxes] = Layer.create(@vl_nnmatchpriors, args, ...
+                                                           'numInputDer', 0) ; 
+  matches.name = 'matches' ; targets.name = 'targets' ;
+  tWeights.name = 'tWeights' ; boxes.name = 'boxes' ;
   
   % sample weighting
   % There are a couple of methods for doing sample weighting. THe first is
   % is to use a ranking loss to try to enable the use of all negatives in 
   % training. The second is standard OHEM.
-  [hardNegs, extendedLabels, cWeights] = Layer.create(@vl_nnhardnegatives, ...
-                            {confs, gtLabels, matches, ...
-                            'numClasses', opts.modelOpts.numClasses, ...
-                            'backgroundLabel', 1, ...
-                            'negPosRatio', opts.modelOpts.negPosRatio}, ...
-                            'numInputDer', 0) ;
-  hardNegs.name = 'hardNegs' ;
-  cWeights.name = 'cWeights' ;
-  extendedLabels.name = 'extendedLabels' ;
+  lOpts = {'numClasses', numClasses, 'backgroundLabel', 1, ...
+           'negPosRatio', opts.modelOpts.negPosRatio} ;
+  args = [{confs, gtLabels, matches} lOpts] ;
+  [hardNegs, exLabels, cWeights] = Layer.create(@vl_nnhardnegatives, ...
+                                                   args, 'numInputDer', 0) ;
+  hardNegs.name = 'hardNegs' ; cWeights.name = 'cWeights' ;
+  exLabels.name = 'extendedLabels' ;
 
-  [tarPreds, classPreds] = Layer.create(@vl_nnmultiboxcoder, ...
-                      {locs, confs, matches, hardNegs, gtBoxes, ...
-                      gtLabels, 'numClasses', opts.modelOpts.numClasses}, ...
-                      'numInputDer', 2) ;
-  tarPreds.name = 'mbox_loc' ;
-  classPreds.name = 'mbox_conf' ;
+  args = {locs, confs, matches, hardNegs, 'numClasses', numClasses} ;
+  largs = {'numInputDer', 2} ;
+  [tarPreds, classPreds] = Layer.create(@vl_nnmultiboxcoder, args, largs{:}) ;
+  tarPreds.name = 'mbox_loc' ; classPreds.name = 'mbox_conf' ;
 
   % Loss layers
-  softmaxlog = Layer.create(@vl_nnloss, {classPreds, extendedLabels, ... 
-                                        'instanceWeights', cWeights}, ...
-                                         'numInputDer', 1) ;
+  args = {classPreds, exLabels, 'instanceWeights', cWeights} ;
+  softmaxlog = Layer.create(@vl_nnloss, args, 'numInputDer', 1) ;
   softmaxlog.name = 'conf_loss' ;
-  regloss = Layer.create(@vl_nnhuberloss, {tarPreds, targets, ...
-                                    'instanceWeights', tWeights}, ...
-                                    'numInputDer', 1) ;
+
+  args = {tarPreds, targets, 'instanceWeights', tWeights} ;
+  regloss = Layer.create(@vl_nnhuberloss, args, 'numInputDer', 1) ;
   regloss.name = 'loc_loss' ;
-  loss = Layer.create(@vl_nnmultiboxloss, {softmaxlog, regloss, ...
-                                   'locWeight', opts.modelOpts.locWeight}) ;
+
+  args = {softmaxlog, regloss, 'locWeight', opts.modelOpts.locWeight} ;
+  loss = Layer.create(@vl_nnmultiboxloss, args) ;
   loss.name = 'mbox_loss' ;
 
 % -----------------------------------------------------------------

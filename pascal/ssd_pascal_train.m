@@ -47,8 +47,8 @@ function ssd_pascal_train(varargin)
 %       Clip SSD priors to lie completely within the bounds of the input 
 %       image.
 %
-%      `sourceModel` :: 'data/models-import/vgg-vd-16-reduced' 
-%       The path to the feature extractor used as a trunk for SSD (by default
+%      `sourceModel` :: 'vgg-vd-16-reduced' 
+%       The name of the feature extractor used as a trunk for SSD (by default
 %       the atrous version of vgg-vd-16 is used).
 %
 %      `overlapThreshold` :: 0.5
@@ -119,8 +119,8 @@ function ssd_pascal_train(varargin)
   opts.modelOpts.batchNormalization = false ;
   opts.modelOpts.batchRenormalization = false ;
   opts.modelOpts.CudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
-  opts.modelOpts.sourceModel = fullfile(vl_rootnn, 'data', 'models-import', ...
-                                                     'vgg-vd-16-reduced') ;
+  opts.modelOpts.sourceModel = 'vgg-vd-16-reduced' ;
+
   % configure dataset options
   opts.dataOpts.name = 'pascal' ;
   opts.dataOpts.trainData = '0712' ;
