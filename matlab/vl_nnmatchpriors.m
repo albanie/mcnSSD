@@ -32,7 +32,6 @@ function [matches, targets, tWeights, boxes] = vl_nnmatchpriors(p, gt, varargin)
   opts.ignoreXBoundaryBoxes = false ;
   [opts, dzdy] = vl_argparsepos(opts, varargin, 'nonrecursive') ;
 
-
   assert(isempty(dzdy), 'prior matching is not performed on the back pass') ;
   cellfun(@(x) assert(all(all(x(:,3:4) - x(:,1:2) > 0)), ...
           'MULTIBOXCODER:invalidGroundTruthBoxes', ...
