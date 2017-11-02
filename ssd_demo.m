@@ -6,7 +6,7 @@ function ssd_demo(varargin)
 %   options:
 %
 %   `modelPath`:: ''
-%    Path to a valid R-FCN matconvnet model. If none is provided, a model
+%    Path to a valid SSD matconvnet model. If none is provided, a model
 %    will be downloaded.
 %
 %   `gpu`:: []
@@ -20,18 +20,21 @@ function ssd_demo(varargin)
 
   opts.gpu = [] ;
   opts.modelPath = '' ;
+  opts.numKeep = 2 ;
   opts.wrapper = 'autonn' ;
-  opts = vl_argparse(opts, varargin) ;
+  opts.imPath = 'misc/test.jpg' ;
 
   % The network is trained to prediction occurences
   % of the following classes from the pascal VOC challenge
-  classes = {'background', 'aeroplane', 'bicycle', 'bird', ...
+  opts.classes = {'background', 'aeroplane', 'bicycle', 'bird', ...
      'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable', ...
      'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', ...
      'sofa', 'train', 'tvmonitor'} ;
+  opts = vl_argparse(opts, varargin) ;
+
 
   % Load or download an example SSD model:
-  modelName = 'ssd-mcn-pascal-vggvd-300.mat' ;
+  modelName = 'ssd-mcn-pascal-vggvd-300.mat' ; % default model
   paths = {opts.modelPath, ...
            modelName, ...
            fullfile(vl_rootnn, 'data/models', modelName), ...
@@ -52,7 +55,7 @@ function ssd_demo(varargin)
   net = loadModel(opts) ;
 
   % Load test image
-  im = single(imread('misc/test.jpg')) ; numKeep = 2 ; 
+  im = single(imread(opts.imPath)) ;
   im = imresize(im, net.meta.normalization.imageSize(1:2)) ;
 
   % Evaluate network either on CPU or GPU.
@@ -74,32 +77,33 @@ function ssd_demo(varargin)
   preds = preds(sortedIdx, :) ;
 
   % Extract the most confident predictions
-  box = double(preds(1:numKeep,3:end)) ;
-  confidence = preds(1:numKeep,2) ;
-  label = classes(preds(1:numKeep,1)) ;
+  box = double(preds(1:opts.numKeep,3:end)) ;
+  confidence = preds(1:opts.numKeep,2) ;
+  label = opts.classes(preds(1:opts.numKeep,1)) ;
 
   % Return image to cpu for visualisation
   if numel(opts.gpu) > 0, im = gather(im) ; end
 
   % Diplay prediction as a sanity check
-  figure(1) ; im = im / 255 ; CM = spring(numKeep); 
+  clf ;figure(1) ; im = im / 255 ; CM = spring(opts.numKeep); 
   x = box(:,1) * size(im, 2) ; y = box(:,2) * size(im, 1) ;
   width = box(:,3) * size(im, 2) - x ; height = box(:,4) * size(im, 1) - y ;
   rectangle = [x y width height];
   im = insertShape(im, 'Rectangle', rectangle, 'LineWidth', 4, ...
-                     'Color', CM(1:numKeep,:)) ;
+                     'Color', CM(1:opts.numKeep,:)) ;
   imagesc(im) ;
-  for ii = 1:numKeep
+  for ii = 1:opts.numKeep
     str = sprintf('%s: %.2f', label{ii}, confidence(ii)) ;
     text(x(ii), y(ii)-10, str, 'FontSize', 14, ...
         'BackgroundColor', CM(ii,:)) ;
   end
-  title(sprintf('SSD predictions (top %d are displayed)', numKeep), ...
+  title(sprintf('SSD predictions (top %d are displayed)', opts.numKeep), ...
                    'FontSize', 15) ;
   axis off ;
   
   % Free up the GPU allocation
   if numel(opts.gpu) > 0, net.move('cpu') ; end
+  if exist('zs_dispFig', 'file'), zs_dispFig ; end
 
 % ----------------------------
 function net = loadModel(opts)
