@@ -64,9 +64,9 @@ The public `caffe` models released by Wei Liu have been imported into
 has also been imported. In addition, some sample models trained with the 
 matconvnet implementation have been made available. These can be 
 downloaded directly from 
-[here](http://www.robots.ox.ac.uk/~albanie/models.html#ssd) (a few pre-trained 
+[here](http://www.robots.ox.ac.uk/~albanie/mcn-models.html#ssd) (a few pre-trained 
 models will be downloaded automatically upon running the 
-`core/ssd_pretrained_benchmarks.m` script). 
+`core/ssd_pretrained_benchmarks.m` script).
 
 ### Speed
 
@@ -78,7 +78,7 @@ The pre-trained `ssd-pascal-vggvd-300` model runs at approximately
 `CPU-mode`:
 
 * `matconvnet (tested with v1.0-beta23, v1.0-beta24)`
-* `MATLAB (tested with 2016a)` 
+* `MATLAB (tested with 2016a)`
 
 
 `additional GPU-mode dependency`:
@@ -113,7 +113,7 @@ vl_contrib('test', 'mcnSSD') ; % optional
 The `ssd_demo.m` script gives an example of how to run a pre-trained model 
 on a single image.  The `core/ssd_pretrained_benchmarks.m` will download 
 and evaluate a range of pre-trained SSD models on the `Pascal VOC 2007` test 
-set. 
+set.
 
 An example of model training can be found in `pascal/ssd_pascal_train.m`
 
