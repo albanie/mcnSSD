@@ -1,14 +1,14 @@
 function ssd_pascal_train(varargin)
 %SSD_PASCAL_TRAIN Train an SSD detector on pascal VOC data
-%   SSD_PASCAL_TRAIN performs a full training run of SSD detector on the 
+%   SSD_PASCAL_TRAIN performs a full training run of SSD detector on the
 %   Pascal VOC dataset. A number of options and settings are
-%   provided for training.  The defaults should reproduce the experiment 
+%   provided for training.  The defaults should reproduce the experiment
 %   described in the original SSD paper (linked in README.md).
 %
 %   SSD_PASCAL_TRAIN(..'name', value) accepts the following options:
 %
-%   `confirmConfig` :: true 
-%    Ask for confirmation of the experimental settings before running the 
+%   `confirmConfig` :: true
+%    Ask for confirmation of the experimental settings before running the
 %    experiment
 %
 %   `pruneCheckpoints` :: true
@@ -26,10 +26,10 @@ function ssd_pascal_train(varargin)
 %      `gpus` :: 1
 %       If provided, the gpu ids to be used for processing.
 %
-%      `batchSize` :: 32 
+%      `batchSize` :: 32
 %       Number of images per batch during training.
 %
-%      `continue` :: true 
+%      `continue` :: true
 %       Resume training from previous checkpoint.
 %
 % ----------------------------------------------------------------------
@@ -40,28 +40,28 @@ function ssd_pascal_train(varargin)
 %       The SSD architecture to train (the number denotes input image size)
 %
 %      `numClasses` :: 21
-%       The number of class specific predictors to include in the network 
+%       The number of class specific predictors to include in the network
 %       architecture (this includes a background class)
 %
 %      `clipPriors` :: false
-%       Clip SSD priors to lie completely within the bounds of the input 
+%       Clip SSD priors to lie completely within the bounds of the input
 %       image.
 %
-%      `sourceModel` :: 'vgg-vd-16-reduced' 
+%      `sourceModel` :: 'vgg-vd-16-reduced'
 %       The name of the feature extractor used as a trunk for SSD (by default
 %       the atrous version of vgg-vd-16 is used).
 %
 %      `overlapThreshold` :: 0.5
-%       The threshold used to determine whether a ground truth annotation is 
-%       to be matched to a given prior box (the prior box then becomes a 
+%       The threshold used to determine whether a ground truth annotation is
+%       to be matched to a given prior box (the prior box then becomes a
 %       positive example during training).
 %
 %      `negPosRatio` :: 3
 %       The ratio of negative-to-positive samples used during training.
-%   
+%
 %      `locWeight` :: 1
-%       A scalar which weights the loss contribution of the regression loss 
-%       against the class confidence loss. 
+%       A scalar which weights the loss contribution of the regression loss
+%       against the class confidence loss.
 %
 % ----------------------------------------------------------------------
 %   `dataOpts` :: struct(...)
@@ -71,25 +71,25 @@ function ssd_pascal_train(varargin)
 %       The path to the directory containing the Pascal VOC data data
 %
 %      `useValForTraining` :: true
-%       Whether the validation set (as defined in the original challenge) 
+%       Whether the validation set (as defined in the original challenge)
 %       should be included in the training set.
 %
-%      `zoomScale` :: 4 
+%      `zoomScale` :: 4
 %       Zoom magnitude used by SSD-style data augmentation
 %
 %      `flipAugmentation` :: true
 %       Whether flipped images should be used in the training procedure.
 %
-%      `zoomAugmentation` :: false 
+%      `zoomAugmentation` :: false
 %       Use "zoom" augmentation to improve performance (but longer training)
 %
-%      `patchAugmentation` :: true 
+%      `patchAugmentation` :: true
 %       Use SSD-style "patch" augmentation to improve performance
 %
-%      `distortAugmentation` :: false 
+%      `distortAugmentation` :: false
 %       Use SSD-style "distortion" augmentation to improve performance
 %
-% Copyright (C) 2017 Samuel Albanie 
+% Copyright (C) 2017 Samuel Albanie
 % Licensed under The MIT License [see LICENSE.md for details]
 
   opts.track_map = false ;
@@ -159,11 +159,11 @@ function ssd_pascal_train(varargin)
   opts.train.numEpochs = numel(opts.train.learningRate) ;
   opts.modelOpts.batchSize = opts.train.batchSize ;
 
-  % Configure batch opts. NOTE: The SSD training process uses a variety of data 
-  % augmentation techiques, the settings listed below are designed to 
+  % Configure batch opts. NOTE: The SSD training process uses a variety of data
+  % augmentation techiques, the settings listed below are designed to
   % reproduce the exeriments in the original paper.
   batchOpts.numThreads = 2 ;
-  batchOpts.prefetch = true ; 
+  batchOpts.prefetch = true ;
   batchOpts.use_vl_imreadjpeg = true ;
   batchOpts.clipTargets = true ;
   batchOpts.imageSize = repmat(opts.modelOpts.architecture, 1, 2) ;
@@ -215,13 +215,13 @@ function ssd_pascal_train(varargin)
 % ---------------------------------------------------
 function [opts, imdb] = prepareImdb(imdb, opts)
 % ---------------------------------------------------
-  % set path to VOC 2007 devkit directory 
+  % set path to VOC 2007 devkit directory
   switch opts.dataOpts.trainData
     case '07' % to restrict to 2007, remove training 2012 data
       imdb.images.set(imdb.images.year == 2012) = -1 ;
     case '12' % to restrict to 2012, remove 2007 training data
       imdb.images.set(imdb.images.year == 2007) = -1 ;
-    case '0712' % do nothing ( use full dataset) 
+    case '0712' % do nothing ( use full dataset)
     otherwise, error('Data %s unrecognized', opts.dataOpts.trainData) ;
   end
 
@@ -240,7 +240,7 @@ for i = 1:numel(sel)
   newValue = gather(sum(net.vars{net.forward(sel(i)).outputVar(1)}(:))) ;
 
   % Update running average (same work as dagnn.Loss), but without normalizing
-  % by batch size. NOTE: This means that the final iteration average can be 
+  % by batch size. NOTE: This means that the final iteration average can be
   % slightly inaccurate (but provides a useful approximation of the loss)
   iter = floor(stats.num / batchSize) ;
   stats.(name) = ((iter - 1) * stats.(name) + newValue) / iter ;
