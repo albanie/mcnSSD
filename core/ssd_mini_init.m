@@ -201,7 +201,7 @@ function [confOut, locOut] = getOutSize(maxSize, aspectRatios, opts)
 % aspect ratios)
 
 numBBoxOffsets = 4 ;
-priorsPerFeature = 1 + boolean(maxSize) + numel(aspectRatios) * 2 ;
+priorsPerFeature = 1 + logical(maxSize) + numel(aspectRatios) * 2 ;
 confOut = opts.modelOpts.numClasses * priorsPerFeature ;
 locOut = numBBoxOffsets * priorsPerFeature ;
 
