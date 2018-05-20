@@ -1,4 +1,4 @@
-function ssd_train(expDir, opts, varargin) 
+function ssd_train(expDir, opts, varargin)
 %SSD_TRAIN train an SSDnetwork end to end
 
   % Prepare imdb
@@ -40,4 +40,4 @@ function [net, modelName] = deployModel(expDir, opts)
     opts.modelOpts.deploy_func(bestNet, deployPath, opts.modelOpts.numClasses) ;
     storedNet = load(deployPath) ;
     net = Net(storedNet) ;
-    [~,modelName,~] = fileparts(expDir) ; 
+    [~,modelName,~] = fileparts(expDir) ;

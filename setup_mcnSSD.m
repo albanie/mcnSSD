@@ -1,5 +1,8 @@
-function setup_mcnSSD
+function setup_mcnSSD(varargin)
 %SETUP_MCNSSD Sets up mcnSSD by adding its folders to the MATLAB path
+
+  opts.dev = false ;
+  opts = vl_argparse(opts, varargin) ;
 
   % add dependencies
   check_dependency('autonn') ;
@@ -10,6 +13,10 @@ function setup_mcnSSD
   addpath(root, [root '/misc'], [root '/matlab']) ;
   addpath([root '/core'], [root '/pascal']) ;
   addpath([root '/matlab/utils'], [root '/coco'], [root '/matlab/mex']) ;
+
+  if opts.dev % only used for dev purposes
+    addpath([root '/issue-fixes']) ;
+  end
 
 % -----------------------------------
 function check_dependency(moduleName)

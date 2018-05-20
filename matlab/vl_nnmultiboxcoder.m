@@ -68,7 +68,7 @@ function [targetPreds, classPreds] = vl_nnmultiboxcoder(x, v, m, n, varargin)
 
       targetPreds_ = cellfun(@(x) locPreds_(x,:), matches.idx, 'Uni', false) ;
       targetPreds{i}   = vertcat(targetPreds_{:}) ;  %#ok
-      
+
       % compute the predicted labels
       posPreds = cellfun(@(x) confPreds_(x,:), matches.idx, 'Uni', false) ;
       negPreds = confPreds_(hardNegs,:) ;
@@ -94,7 +94,7 @@ function [targetPreds, classPreds] = vl_nnmultiboxcoder(x, v, m, n, varargin)
     confDerSizes = locDerSizes + cellfun(@numel, neg) ;
     locCumSizes = [ 0 cumsum(locDerSizes) ] ;
     confCumSizes = [ 0 cumsum(confDerSizes) ] ;
-    
+
     for i = 1:batchSize
       locDer_{i} = dzdLoc(locCumSizes(i) + 1:locCumSizes(i+1),:) ; %#ok
       confDer_{i} = dzdConf(confCumSizes(i) + 1:confCumSizes(i+1),:) ; %#ok

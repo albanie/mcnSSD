@@ -4,7 +4,7 @@ classdef MultiboxCoder < dagnn.ElementWise
     overlapThreshold = 0.5
     backgroundLabel = 1
     negPosRatio = 3
-    negOverlap = 0.5 
+    negOverlap = 0.5
     matchingPosIndices = []
     matchingNegIndices = []
   end

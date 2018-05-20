@@ -9,7 +9,7 @@ classdef nnmultiboxcoder < nntest
       m = struct() ; n = cell(1, batchSize) ;
       for ii = 1:batchSize
         numBoxes = randi(10, 1) ;
-        m(ii).idx = num2cell(randsample(numPriors, numBoxes)) ; 
+        m(ii).idx = num2cell(randsample(numPriors, numBoxes)) ;
         m(ii).ignored = false ;
         n{ii} = randsample(setdiff(1:numPriors, [m(ii).idx{:}]), numBoxes * 3) ;
       end
@@ -26,7 +26,7 @@ classdef nnmultiboxcoder < nntest
       test.der(@(x) forward_wrapper(x, v, m, n,'locPreds'), x, ...
                                     derLocs, derLoc_, test.range * 1e-3) ;
 
-      % NOTE: the delta on this test must be small to avoid "flipping" the 
+      % NOTE: the delta on this test must be small to avoid "flipping" the
       % hard negatives
       test.der(@(v) forward_wrapper(x,v,m,n,'confPreds'), v, ...
                                    derConfs, derConf_, test.range * 1e-5) ;

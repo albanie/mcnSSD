@@ -102,7 +102,7 @@ function ssd_pascal_evaluation(varargin)
   opts.msScales = 1 ; % by default, only single scale selection is used
   opts.testset = 'test' ; 
   opts.evalVersion = 'fast' ;
-  opts.refreshCache = false ;
+  opts.refreshCache = true ;
   opts.modelName = 'ssd-pascal-vggvd-300' ;
 
   % configure batch opts
@@ -113,6 +113,7 @@ function ssd_pascal_evaluation(varargin)
   % configure dataset options
   opts.dataOpts.name = 'pascal' ;
   opts.dataOpts.decoder = 'serial' ;
+  opts.dataOpts.customDecoder = [] ;
   opts.dataOpts.getImdb = @getCombinedPascalImdb ;
   opts.dataOpts.resultsFormat = 'minMax' ; 
   opts.dataOpts.eval_func = @pascal_eval_func ;
@@ -201,6 +202,8 @@ function [opts, imdb] = configureImdbOpts(expDir, opts, imdb)
   VOCopts = configureVOC(expDir, opts.dataOpts.dataRoot, opts.year) ;
   VOCopts.testset = opts.testset ;
   opts.dataOpts.VOCopts = VOCopts ;
+  %testIms = (imdb.images.set == 3) ;
+  %imdb.images.set(testIms(20:end)) = - 1;
 
 % ---------------------------------------------------------------------------
 function displayPascalResults(modelName, aps, opts)
