@@ -230,7 +230,6 @@ function [opts, imdb] = prepareImdb(imdb, opts)
     opts.train.train = find(imdb.images.set == 2 | imdb.images.set == 1) ;
   end
 
-
 % --------------------------------------------------------------------------------
 function stats = extractUnnormalizedStats(stats, net, sel, batchSize, normalized)
 % --------------------------------------------------------------------------------
