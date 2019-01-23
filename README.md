@@ -1,5 +1,7 @@
 ## Single Shot MultiBox Detector
 
+**NOTICE: This repo is no longer maintained.  For an easy-to-use object detector that is actively maintained, I recommend considering the PyTorch Mask R-CNN [implementation](https://github.com/facebookresearch/maskrcnn-benchmark).**
+
 This directory contains code to train and evaluate the SSD object detector
 described in the paper:
 
